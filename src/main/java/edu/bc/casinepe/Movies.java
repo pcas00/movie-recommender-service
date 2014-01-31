@@ -15,7 +15,7 @@ import java.util.*;
  */
 @Path("movies")
 public class Movies {
-    private static Logger logger = LogManager.getLogger("MovieRecommenderService");
+    private static Logger logger = LogManager.getLogger(Movies.class.getName());
     /**
      * Method handling HTTP GET requests. The returned object will be sent
      * to the client as "text/plain" media type.
@@ -23,34 +23,52 @@ public class Movies {
      * @return String that will be returned as a text/plain response.
      */
     @GET
-    @Produces(MediaType.TEXT_PLAIN)
-    public String getIt() {
-        Map<Integer, List<Double>> movieRatings = parseMovieRatings("/ratings.csv");
+    @Produces(MediaType.APPLICATION_JSON)
+    public String getMovies() {
+
+        Map<Integer, List<Double>> movieRatings = parseMovieRatings("/mahoutRatings.dat");
 
         //Find highest average; TreeMap implementation sorts by value which will be average rating
-        Map<Integer, Double> averageRatings = new TreeMap<Integer, Double>();
+        /*Map<Integer, Double> averageRatings = new TreeMap<Integer, Double>();
         for (Map.Entry<Integer, List<Double>> entry : movieRatings.entrySet()) {
             Integer movieId = entry.getKey();
             List<Double> allMovieRatings = entry.getValue();
-            double averageRating = mean(allMovieRatings);
+            double averageRating = VectorOperations.mean(allMovieRatings);
             averageRatings.put(movieId, averageRating);
 
-        }
-
-        //Return top 5;
+        } */
         StringBuilder sb = new StringBuilder();
-
-        int i = 0;
-        for (Map.Entry<Integer, List<Double>> entry : movieRatings.entrySet()) {
-            if (i > 5) {
-                break;
-            }
-
-            sb.append(entry.getKey() + " : " + entry.getValue() + "\n");
-            i++;
+        sb.append("Starting with movie rating size " + movieRatings.size() + "\n");
+        Map<Integer, List<Double>> top5Movies =  topNFromMap(5, movieRatings);
+        for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
+            sb.append("Movie: " + entry.getKey() + " with rating: " + entry.getValue() + "\n");
         }
 
         return sb.toString();
+
+    }
+
+    public Map<Integer, List<Double>> topNFromMap(int n, Map<Integer, List<Double>> map) {
+        ValueComparator vc = new ValueComparator(map);
+        TreeMap<Integer, List<Double>> mapSortedByValue = new TreeMap<Integer, List<Double>>(vc);
+        mapSortedByValue.putAll(map);
+
+        //Return top 5;
+        Map<Integer, List<Double>> topNMap = new LinkedHashMap<Integer, List<Double>>();
+        //StringBuilder sb = new StringBuilder();
+
+        int i = 0;
+        for (Map.Entry<Integer, List<Double>> entry : mapSortedByValue.entrySet()) {
+            if (i > n) {
+                break;
+            }
+            topNMap.put(entry.getKey(), entry.getValue());
+            //sb.append(entry.getKey() + " : " + entry.getValue() + "\n");
+            //sb.append(entry.getKey() + "\n");
+            i++;
+        }
+
+        return topNMap;
     }
 
     /*
@@ -94,18 +112,4 @@ public class Movies {
         return movieRatings;
     }
 
-    /*
-     * @param ratings list of ratings from which to calculate a mean
-     * @return mean rating
-     */
-    public double mean(List<Double> ratings) {
-        double sum = 0;
-        double numberOfRatings = 0;
-        for (Double rating : ratings) {
-            sum += rating;
-            numberOfRatings++;
-        }
-
-        return sum / numberOfRatings;
-    }
 }

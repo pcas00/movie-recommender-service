@@ -40,13 +40,13 @@ public class MoviesTest {
 
     @Test
     public void testRatingsFileExists() {
-        assertNotNull("Ratings test file is missing", getClass().getResource("/ratings.csv"));
+        assertNotNull("Ratings test file is missing", getClass().getResource("/mahoutRatings.dat"));
     }
     /**
      * Test to see that the message "Got it!" is sent in the response.
      */
     @Test
-    public void testGetIt() {
+    public void testGetMovies() {
         String responseMsg = target.path("movies").request().get(String.class);
         //assertEquals("Got it!", responseMsg);
     }
