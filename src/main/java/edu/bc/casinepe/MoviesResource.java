@@ -14,8 +14,8 @@ import java.util.*;
  * Root resource (exposed at "movies" path)
  */
 @Path("movies")
-public class Movies {
-    private static Logger logger = LogManager.getLogger(Movies.class.getName());
+public class MoviesResource {
+    private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
     /**
      * Method handling HTTP GET requests. The returned object will be sent
      * to the client as "text/plain" media type.
@@ -24,8 +24,9 @@ public class Movies {
      */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public String getMovies() {
+    public MoviesBean getMovies() {
 
+        MoviesBean movies = new MoviesBean();
         Map<Integer, List<Double>> movieRatings = parseMovieRatings("/mahoutRatings.dat");
 
         //Find highest average; TreeMap implementation sorts by value which will be average rating
@@ -37,15 +38,16 @@ public class Movies {
             averageRatings.put(movieId, averageRating);
 
         } */
-        StringBuilder sb = new StringBuilder();
-        sb.append("Starting with movie rating size " + movieRatings.size() + "\n");
+
         Map<Integer, List<Double>> top5Movies =  topNFromMap(5, movieRatings);
         for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
-            sb.append("Movie: " + entry.getKey() + " with rating: " + entry.getValue() + "\n");
+            MovieBean m = new MovieBean();
+            m.setId(entry.getKey());
+            m.setRating(VectorOperations.mean(entry.getValue()));
+            movies.addMovieBean(m);
         }
 
-        return sb.toString();
-
+        return movies;
     }
 
     public Map<Integer, List<Double>> topNFromMap(int n, Map<Integer, List<Double>> map) {
