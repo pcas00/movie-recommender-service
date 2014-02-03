@@ -1,7 +1,10 @@
 package edu.bc.casinepe;
 
+import org.codehaus.jackson.annotate.JsonProperty;
+
 public class MovieBean {
 
+    @JsonProperty("movieId")
     private int id;
     private String title;
     private double rating;

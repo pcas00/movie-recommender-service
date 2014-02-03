@@ -26,7 +26,8 @@ public class Main {
         // in edu.bc.casinepe package
         final ResourceConfig rc = new ResourceConfig().packages("edu.bc.casinepe")
                                                       //.register(MyObjectMapperProvider.class)
-                                                      .register(JacksonFeature.class);
+                                                      .register(JacksonFeature.class)
+                                                      .register(CorsResponseFilter.class);
 
 
         // create and start a new instance of grizzly http server
