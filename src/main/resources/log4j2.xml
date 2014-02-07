@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="info" name="RecommenderWebService" packages="">
+<Configuration status="INFO" name="RecommenderWebService" packages="edu.bc.casinepe">
     <Appenders>
-        <File name="MyFile" fileName="logs/app.log">
+        <File name="Default" fileName="logs/app.log">
+            <PatternLayout>
+                <Pattern>%d %p %c{1.} [%t] %m%n</Pattern>
+            </PatternLayout>
+        </File>
+        <File name="Metrics" fileName="logs/metrics.log">
             <PatternLayout>
                 <Pattern>%d %p %c{1.} [%t] %m%n</Pattern>
             </PatternLayout>
         </File>
     </Appenders>
     <Loggers>
-        <Root level="info">
-            <AppenderRef ref="MyFile"/>
+        <Logger name="edu.bc.casinepe.MetricSystem" level="info" additivity="false">
+            <AppenderRef ref="Metrics"/>
+        </Logger>
+        <Root level="info" additivity="false">
+            <AppenderRef ref="Default"/>
         </Root>
     </Loggers>
 </Configuration>

@@ -1,5 +1,8 @@
 package edu.bc.casinepe;
 
+import com.codahale.metrics.*;
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.annotation.Timed;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -10,12 +13,17 @@ import javax.ws.rs.core.MediaType;
 import java.io.*;
 import java.util.*;
 
+import static com.codahale.metrics.MetricRegistry.name;
+
 /**
  * Root resource (exposed at "movies" path)
  */
 @Path("movies")
 public class MoviesResource {
+
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
+    private final Timer responses = MetricSystem.metrics.timer(name(MoviesResource.class, "responses"));
+
     /**
      * Method handling HTTP GET requests. The returned object will be sent
      * to the client as "text/plain" media type.
@@ -25,29 +33,28 @@ public class MoviesResource {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMovies() {
+        final Timer.Context context = responses.time();
 
-        MoviesBean movies = new MoviesBean();
-        Map<Integer, List<Double>> movieRatings = parseMovieRatings("/mahoutRatings.dat");
+        try {
+            MoviesBean movies = new MoviesBean();
+            Map<Integer, List<Double>> movieRatings = parseMovieRatings("/mahoutRatings.dat");
 
-        //Find highest average; TreeMap implementation sorts by value which will be average rating
-        /*Map<Integer, Double> averageRatings = new TreeMap<Integer, Double>();
-        for (Map.Entry<Integer, List<Double>> entry : movieRatings.entrySet()) {
-            Integer movieId = entry.getKey();
-            List<Double> allMovieRatings = entry.getValue();
-            double averageRating = VectorOperations.mean(allMovieRatings);
-            averageRatings.put(movieId, averageRating);
+            Map<Integer, List<Double>> top5Movies =  topNFromMap(5, movieRatings);
+            for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
+                MovieBean m = new MovieBean();
+                List<Double> ratings = entry.getValue();
+                m.setId(entry.getKey());
+                m.setRating(VectorOperations.mean(ratings));
+                m.setRatingsCount(ratings.size());
+                movies.addMovieBean(m);
+            }
 
-        } */
-
-        Map<Integer, List<Double>> top5Movies =  topNFromMap(5, movieRatings);
-        for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
-            MovieBean m = new MovieBean();
-            m.setId(entry.getKey());
-            m.setRating(VectorOperations.mean(entry.getValue()));
-            movies.addMovieBean(m);
+            return movies;
+        } finally {
+            context.stop();
         }
 
-        return movies;
+
     }
 
     public Map<Integer, List<Double>> topNFromMap(int n, Map<Integer, List<Double>> map) {

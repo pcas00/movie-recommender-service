@@ -24,11 +24,12 @@ public class Main {
     public static HttpServer startServer() {
         // create a resource config that scans for JAX-RS resources and providers
         // in edu.bc.casinepe package
+
         final ResourceConfig rc = new ResourceConfig().packages("edu.bc.casinepe")
-                                                      //.register(MyObjectMapperProvider.class)
                                                       .register(JacksonFeature.class)
                                                       .register(CorsResponseFilter.class);
 
+        MetricSystem.start();
 
         // create and start a new instance of grizzly http server
         // exposing the Jersey application at BASE_URI
