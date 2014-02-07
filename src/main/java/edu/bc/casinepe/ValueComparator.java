@@ -11,6 +11,8 @@ import java.util.Map;
 class ValueComparator implements Comparator<Integer> {
 
     Map<Integer, List<Double>> originalMap;
+    //Fudge factor for confidence calculation
+    public final int FUDGE_FACTOR = 2;
 
     public ValueComparator(Map<Integer, List<Double>> map) {
         this.originalMap = map;
@@ -21,10 +23,17 @@ class ValueComparator implements Comparator<Integer> {
         List<Double> ratingsOne = originalMap.get(keyOne);
         List<Double> ratingsTwo = originalMap.get(keyTwo);
 
-        if (VectorOperations.mean(ratingsOne) > VectorOperations.mean(ratingsTwo)) {
+        double avgRatingsOne = VectorOperations.mean(ratingsOne);
+        double avgRatingsTwo = VectorOperations.mean(ratingsTwo);
+
+        double valueKeyOne = avgRatingsOne - FUDGE_FACTOR / Math.sqrt(ratingsOne.size());
+        double valueKeyTwo = avgRatingsTwo - FUDGE_FACTOR / Math.sqrt(ratingsTwo.size());
+
+
+        if (valueKeyOne > valueKeyTwo) {
             return -1;
         //If mean's are equal, compare the amount of ratings
-        } else if (VectorOperations.mean(originalMap.get(keyOne)) == VectorOperations.mean(originalMap.get(keyTwo))) {
+        } else if (avgRatingsOne == avgRatingsTwo) {
 
             if (ratingsOne.size() > ratingsTwo.size()) {
                 return -1;
