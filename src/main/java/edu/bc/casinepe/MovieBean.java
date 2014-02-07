@@ -8,6 +8,7 @@ public class MovieBean {
     private int id;
     private String title;
     private double rating;
+    private int ratingsCount;
 
     public MovieBean() {}
 
@@ -29,6 +30,10 @@ public class MovieBean {
         this.rating = rating;
     }
 
+    public void setRatingsCount(int ratingsCount) {
+        this.ratingsCount = ratingsCount;
+    }
+
     public int getId() {
         return this.id;
     }
@@ -40,6 +45,8 @@ public class MovieBean {
     public double getRating() {
         return this.rating;
     }
+
+    public int getRatingsCount() { return this.ratingsCount; }
 
 
 }
