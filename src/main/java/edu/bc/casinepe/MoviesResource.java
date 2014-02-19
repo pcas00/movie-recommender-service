@@ -9,6 +9,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 import java.io.*;
+import java.sql.*;
 import java.util.*;
 
 import static com.codahale.metrics.MetricRegistry.name;
@@ -18,9 +19,12 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movies")
 public class MoviesResource {
-
+    private String username = "petercasinelli";
+    private String password = "postgres";
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
-    private final Timer responses = MetricSystem.metrics.timer(name(MoviesResource.class, "responses"));
+    private final Timer fileResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "fileResponses"));
+    private final Timer dbResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "dbResponses"));
+
 
     /**
      * Method handling HTTP GET requests. The returned object will be sent
@@ -31,7 +35,7 @@ public class MoviesResource {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMovies() {
-        final Timer.Context context = responses.time();
+        final Timer.Context context = fileResponses.time();
 
         try {
             MoviesBean movies = new MoviesBean();
@@ -53,6 +57,53 @@ public class MoviesResource {
         }
 
 
+    }
+
+    @GET
+    @Path("/db")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MoviesBean getMoviesFromDB() {
+
+        logger.error("Testing error");
+        final Timer.Context context = dbResponses.time();
+        Connection conn = null;
+        Statement stmt = null;
+
+        try {
+            // Create container for movies
+            MoviesBean movies = new MoviesBean();
+
+            Connection con = DriverManager.getConnection(
+                    "jdbc:postgresql://localhost:5432/movie_recommender",
+                    username,
+                    password);
+
+            stmt = con.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
+                                             "FROM movie_ratings, movies " +
+                                             "WHERE movies.id = movie_ratings.movie_id " +
+                                             "GROUP BY movies.id " +
+                                             "ORDER BY average_rating DESC " +
+                                             "LIMIT 5");
+
+            while (rs.next()) {
+                String title = rs.getString("title");
+                double averageRating = rs.getDouble("average_rating");
+                int movieId = rs.getInt("id");
+                MovieBean m = new MovieBean(movieId, title, averageRating);
+                movies.addMovieBean(m);
+
+            }
+
+            return movies;
+
+        } catch (SQLException e) {
+            logger.error("SQL statement failed: " + e);
+        } finally {
+            context.stop();
+        }
+
+        return null;
     }
 
 }
