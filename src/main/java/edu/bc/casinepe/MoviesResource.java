@@ -3,9 +3,20 @@ package edu.bc.casinepe;
 import com.codahale.metrics.Timer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.mahout.cf.taste.common.TasteException;
+import org.apache.mahout.cf.taste.impl.model.jdbc.PostgreSQLJDBCDataModel;
+import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
+import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
+import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
+import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
+import org.apache.mahout.cf.taste.recommender.RecommendedItem;
+import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
+import org.postgresql.ds.PGPoolingDataSource;
 
+import javax.sql.DataSource;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 import java.io.*;
@@ -104,6 +115,53 @@ public class MoviesResource {
         }
 
         return null;
+    }
+
+    @GET
+    @Path("/similar/{movieId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MoviesBean getSimilarMovies(@PathParam("movieId") int movieId) {
+
+        //Setting up a data source to manage DB connection pooling
+        PGPoolingDataSource dataSource = new PGPoolingDataSource();
+        dataSource.setDataSourceName("movie-recommender-ds");
+        dataSource.setServerName("localhost");
+        dataSource.setDatabaseName("movie_recommender");
+        dataSource.setUser(username);
+        dataSource.setPassword(password);
+        dataSource.setMaxConnections(10);
+
+        PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
+                                                                        "movie_ratings",
+                                                                        "user_id",
+                                                                        "movie_id",
+                                                                        "rating",
+                                                                        "timestamp");
+        MoviesBean recommendedMovies = new MoviesBean();
+
+        try {
+            logger.info("Finding similar items for movie id " + movieId);
+            //ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
+            ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
+            ItemBasedRecommender recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
+
+            List<RecommendedItem> recommendations = recommender.mostSimilarItems(movieId, 5);
+            for (RecommendedItem item : recommendations) {
+                MovieBean m = new MovieBean();
+                m.setId((int) item.getItemID());
+                m.setRating(item.getValue());
+                recommendedMovies.addMovieBean(m);
+            }
+            logger.info("Similar items are: " + recommendations);
+            logger.info("MoviesBean is items are: " + recommendedMovies);
+
+
+
+        } catch (TasteException e) {
+            logger.error("There was a taste error: " + e);
+        }
+
+        return recommendedMovies;
     }
 
 }

@@ -83,6 +83,14 @@
             <artifactId>postgresql</artifactId>
             <version>9.1-901.jdbc4</version>
         </dependency>
+
+        <!-- Apache Mahout -->
+        <dependency>
+            <groupId>org.apache.mahout</groupId>
+            <artifactId>mahout-core</artifactId>
+            <version>0.5</version>
+        </dependency>
+
     </dependencies>
 
     <build>
