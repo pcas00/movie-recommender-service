@@ -6,7 +6,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 
 import static com.codahale.metrics.MetricRegistry.name;
@@ -39,8 +38,12 @@ public class MovieApi {
                m.setRating(rs.getDouble("average_rating"));
             }
 
+            rs.close();
+            stmt.close();
+            conn.close();
 
-        } catch (SQLException e) {
+
+        } catch (Exception e) {
             logger.error(e);
 
         } finally {

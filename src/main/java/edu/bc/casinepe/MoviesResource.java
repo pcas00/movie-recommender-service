@@ -107,6 +107,10 @@ public class MoviesResource {
 
             }
 
+            rs.close();
+            stmt.close();
+            conn.close();
+
             return movies;
 
         } catch (SQLException e) {

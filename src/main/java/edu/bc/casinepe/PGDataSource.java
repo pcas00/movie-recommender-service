@@ -21,6 +21,7 @@ public class PGDataSource {
             dataSource.setPassword("password");
             dataSource.setMaxConnections(10);
         }
+
         return dataSource;
     }
 }
