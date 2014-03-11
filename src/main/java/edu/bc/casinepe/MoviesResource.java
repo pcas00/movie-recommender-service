@@ -84,12 +84,13 @@ public class MoviesResource {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
-            Connection con = DriverManager.getConnection(
+            /*Connection con = DriverManager.getConnection(
                     "jdbc:postgresql://localhost:5432/movie_recommender",
                     username,
-                    password);
+                    password);  */
+            conn = PGDataSource.getDataSource().getConnection();
 
-            stmt = con.createStatement();
+            stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
                     "FROM movie_ratings, movies " +
                     "WHERE movies.id = movie_ratings.movie_id " +
@@ -122,7 +123,6 @@ public class MoviesResource {
 
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getSimilarMovies(@PathParam("movieId") int movieId, @DefaultValue("5") @PathParam("number") int number) {
-
         //Default to 5
         if (number <= 0) {
             number = 5;
@@ -132,6 +132,9 @@ public class MoviesResource {
         if (number > 10) {
             number = 10;
         }
+
+        logger.info("Getting " + number + " similar movies to movie ID " + movieId);
+
 
         // Start timer
         final Timer.Context context = getSimilarMoviesFromDb.time();
@@ -152,20 +155,22 @@ public class MoviesResource {
 
 
             logger.info("Finding similar items for movie id " + movieId);
-            ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
-            //ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
+            //ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
+            ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
             ItemBasedRecommender recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
 
             List<RecommendedItem> recommendations = recommender.mostSimilarItems(movieId, number);
+            MovieApi movieApi = new MovieApi();
             for (RecommendedItem item : recommendations) {
-                logger.info("Found similar item: " + item);
+                /*logger.info("Found similar item: " + item);
                 MovieBean m = new MovieBean();
                 m.setId((int) item.getItemID());
-                m.setRating(item.getValue());
+                m.setRating(item.getValue());*/
+                MovieBean m = movieApi.getMovie((int)item.getItemID());
                 recommendedMovies.addMovieBean(m);
             }
             logger.info("Similar items are: " + recommendations);
-            logger.info("MoviesBean is items are: " + recommendedMovies);
+            //logger.info("MoviesBean is items are: " + recommendedMovies);
 
 
 
