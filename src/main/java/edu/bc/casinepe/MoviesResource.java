@@ -11,13 +11,12 @@ import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
 import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
+import org.postgresql.ds.PGConnectionPoolDataSource;
 import org.postgresql.ds.PGPoolingDataSource;
 
+import javax.sql.ConnectionPoolDataSource;
 import javax.sql.DataSource;
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import java.io.*;
 import java.sql.*;
@@ -34,7 +33,9 @@ public class MoviesResource {
     private String password = "postgres";
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
     private final Timer fileResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "fileResponses"));
-    private final Timer dbResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "dbResponses"));
+    private final Timer getMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getMoviesFromDb"));
+    private final Timer getSimilarMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getSimilarMoviesFromDb"));
+
 
 
     /**
@@ -75,8 +76,7 @@ public class MoviesResource {
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMoviesFromDB() {
 
-        logger.error("Testing error");
-        final Timer.Context context = dbResponses.time();
+        final Timer.Context context = getMoviesFromDb.time();
         Connection conn = null;
         Statement stmt = null;
 
@@ -91,11 +91,11 @@ public class MoviesResource {
 
             stmt = con.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
-                                             "FROM movie_ratings, movies " +
-                                             "WHERE movies.id = movie_ratings.movie_id " +
-                                             "GROUP BY movies.id " +
-                                             "ORDER BY average_rating DESC " +
-                                             "LIMIT 5");
+                    "FROM movie_ratings, movies " +
+                    "WHERE movies.id = movie_ratings.movie_id " +
+                    "GROUP BY movies.id " +
+                    "ORDER BY average_rating DESC " +
+                    "LIMIT 5");
 
             while (rs.next()) {
                 String title = rs.getString("title");
@@ -118,35 +118,47 @@ public class MoviesResource {
     }
 
     @GET
-    @Path("/similar/{movieId}")
+    @Path("/similar/{movieId}/{number : (\\d?\\d?)}")
+
     @Produces(MediaType.APPLICATION_JSON)
-    public MoviesBean getSimilarMovies(@PathParam("movieId") int movieId) {
+    public MoviesBean getSimilarMovies(@PathParam("movieId") int movieId, @DefaultValue("5") @PathParam("number") int number) {
 
-        //Setting up a data source to manage DB connection pooling
-        PGPoolingDataSource dataSource = new PGPoolingDataSource();
-        dataSource.setDataSourceName("movie-recommender-ds");
-        dataSource.setServerName("localhost");
-        dataSource.setDatabaseName("movie_recommender");
-        dataSource.setUser(username);
-        dataSource.setPassword(password);
-        dataSource.setMaxConnections(10);
+        //Default to 5
+        if (number <= 0) {
+            number = 5;
+        }
 
-        PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
-                                                                        "movie_ratings",
-                                                                        "user_id",
-                                                                        "movie_id",
-                                                                        "rating",
-                                                                        "timestamp");
+        //Only return a maximum of 10 similar items
+        if (number > 10) {
+            number = 10;
+        }
+
+        // Start timer
+        final Timer.Context context = getSimilarMoviesFromDb.time();
         MoviesBean recommendedMovies = new MoviesBean();
 
         try {
+            //Setting up a data source to manage DB connection pooling
+            //PGConnectionPoolDataSource dataSource2 = new PGConnectionPoolDataSource();
+
+            PGPoolingDataSource dataSource = PGDataSource.getDataSource();
+
+            PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
+                    "movie_ratings",
+                    "user_id",
+                    "movie_id",
+                    "rating",
+                    "timestamp");
+
+
             logger.info("Finding similar items for movie id " + movieId);
-            //ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
-            ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
+            ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
+            //ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
             ItemBasedRecommender recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
 
-            List<RecommendedItem> recommendations = recommender.mostSimilarItems(movieId, 5);
+            List<RecommendedItem> recommendations = recommender.mostSimilarItems(movieId, number);
             for (RecommendedItem item : recommendations) {
+                logger.info("Found similar item: " + item);
                 MovieBean m = new MovieBean();
                 m.setId((int) item.getItemID());
                 m.setRating(item.getValue());
@@ -157,11 +169,14 @@ public class MoviesResource {
 
 
 
-        } catch (TasteException e) {
+        } catch (Exception e) {
             logger.error("There was a taste error: " + e);
+        } finally {
+            context.stop();
+
+            return recommendedMovies;
         }
 
-        return recommendedMovies;
     }
 
 }
