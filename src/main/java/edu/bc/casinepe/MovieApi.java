@@ -24,11 +24,11 @@ public class MovieApi {
         Connection conn = null;
         Statement stmt = null;
         try {
-            conn = PGDataSource.getDataSource().getConnection();
+            conn = MysqlDataSource.getMysqlDataSource().getConnection();
             stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(movie_ratings.rating) as average_rating " +
                     "FROM movie_ratings, movies " +
-                    "WHERE movies.id = movie_ratings.movie_id AND movies.id = " + movieId +
+                    "WHERE movies.id = movie_ratings.movie_id AND movies.id = " + movieId + " " +
                     "GROUP BY movies.id " +
                     "LIMIT 1");
 

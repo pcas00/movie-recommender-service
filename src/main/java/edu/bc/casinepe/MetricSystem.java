@@ -3,6 +3,7 @@ package edu.bc.casinepe;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Slf4jReporter;
 
+import org.apache.logging.log4j.LogManager;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 
@@ -13,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class MetricSystem {
 
-    private static final Logger logger = LoggerFactory.getLogger(MetricSystem.class);
+    private static org.apache.logging.log4j.Logger logger = LogManager.getLogger(MetricSystem.class.getName());
     private static boolean started = false;
     public static final MetricRegistry metrics = new MetricRegistry();
 

@@ -4,10 +4,10 @@ import com.codahale.metrics.Timer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
+import org.apache.mahout.cf.taste.impl.model.jdbc.AbstractJDBCDataModel;
+import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.PostgreSQLJDBCDataModel;
-import org.apache.mahout.cf.taste.impl.recommender.CachingRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
-import org.apache.mahout.cf.taste.impl.recommender.slopeone.SlopeOneRecommender;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
 import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
@@ -16,6 +16,7 @@ import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
 import org.postgresql.ds.PGPoolingDataSource;
 
 
+import javax.sql.DataSource;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import java.sql.*;
@@ -28,8 +29,6 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movies")
 public class MoviesResource {
-    private String username = "petercasinelli";
-    private String password = "postgres";
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
     private final Timer fileResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "fileResponses"));
     private final Timer getMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getMoviesFromDb"));
@@ -87,8 +86,8 @@ public class MoviesResource {
                     "jdbc:postgresql://localhost:5432/movie_recommender",
                     username,
                     password);  */
-            conn = PGDataSource.getDataSource().getConnection();
-
+            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            //conn = MysqlDataSource.getMysqlDataSource().getConnection();
             stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
                     "FROM movie_ratings, movies " +
@@ -146,9 +145,9 @@ public class MoviesResource {
             //Setting up a data source to manage DB connection pooling
             //PGConnectionPoolDataSource dataSource2 = new PGConnectionPoolDataSource();
 
-            PGPoolingDataSource dataSource = PGDataSource.getDataSource();
+            DataSource dataSource = MysqlDataSource.getMysqlDataSource();
 
-            PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
+            MySQLJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
                     "movie_ratings",
                     "user_id",
                     "movie_id",
@@ -182,14 +181,23 @@ public class MoviesResource {
     }
 
     @GET
-    @Path("/personalized")
+    @Path("/personalized/{userId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public MoviesBean getPersonalizedMovies() {
+    public MoviesBean getPersonalizedMovies(@PathParam("userId") int userId) {
 
         MoviesBean recommendedMovies = new MoviesBean();
 
-        PGPoolingDataSource dataSource = PGDataSource.getDataSource();
+        /*PGPoolingDataSource dataSource = MysqlDataSource.getDataSource();
         PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
+                "movie_ratings",
+                "user_id",
+                "movie_id",
+                "rating",
+                "timestamp");*/
+
+        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+
+        final AbstractJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
                 "movie_ratings",
                 "user_id",
                 "movie_id",
@@ -197,13 +205,13 @@ public class MoviesResource {
                 "timestamp");
 
         Recommender recommender = null;
-        Recommender cachingRecommender = null;
+        //Recommender cachingRecommender = null;
 
         try {
 
-            recommender = new SlopeOneRecommender(dataModel);
-            cachingRecommender = new CachingRecommender(recommender);
-            List<RecommendedItem> recommendations = cachingRecommender.recommend(405, 10);
+            //DiffStorage diffStorage = new MemoryDiffStorage(dataModel, Weighting.UNWEIGHTED, Long.MAX_VALUE);
+            //recommender = new CachingRecommender(new SlopeOneRecommender(dataModel, Weighting.UNWEIGHTED, Weighting.UNWEIGHTED, diffStorage));
+            List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
             MovieApi movieApi = new MovieApi();
             for (RecommendedItem item : recommendations) {
                 MovieBean m = movieApi.getMovie((int)item.getItemID());
