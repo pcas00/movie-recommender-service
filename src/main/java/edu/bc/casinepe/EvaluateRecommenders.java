@@ -25,17 +25,8 @@ import org.apache.mahout.cf.taste.similarity.UserSimilarity;
 
 import javax.sql.DataSource;
 
-
-
-/**
- * Created by petercasinelli on 3/12/14.
- */
 public class EvaluateRecommenders {
     private static Logger logger = LogManager.getLogger(EvaluateRecommenders.class.getName());
-
-    private String dataSet;
-    //private static final double TRAINING_PERCENTAGE = 0.8;
-    //private static final double EVALUATION_PERCENTAGE = 0.2;
     private double trainingPercentage;
     private double evaluationPercentage;
 
@@ -46,142 +37,169 @@ public class EvaluateRecommenders {
 
         System.out.println("Training percentage is : " + trainingPercentage + " and evaluation percentage is: " + evaluationPercentage);
 
-        //Start evaluation
-        evaluateItemItemCF();
-        evaluateUserUser("pearson");
-        evaluateUserUser("loglike");
-    }
-
-    public void evaluateItemItemCF() {
-        System.out.println("Item-Item Collaborative Filtering Pearson Correlation: \n");
-        logger.info("Item-Item CF Pearson Correlation");
-        org.apache.mahout.common.RandomUtils.useTestSeed();
         DataSource dataSource = MysqlDataSource.getMysqlDataSource();
-
-        DataModel dataModel;
         try {
-
-            dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
+            DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
                     "movie_ratings",
                     "user_id",
                     "movie_id",
                     "rating",
                     "timestamp"));
 
-            RecommenderBuilder builder = new RecommenderBuilder() {
-                public Recommender buildRecommender(DataModel model) {
-                    // build and return the Recommender to evaluate here
-                    Recommender recommender = null;
-                    ItemSimilarity itemSimilarity = null;
-                    try {
-                        itemSimilarity = new PearsonCorrelationSimilarity(model);
-                        recommender = new GenericItemBasedRecommender(model, itemSimilarity);
-                    } catch (TasteException e) {
-                        e.printStackTrace();
-                    }
+            PearsonCorrelationSimilarity pearsonCorrelationSimilarity = new PearsonCorrelationSimilarity(dataModel);
+            LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);
 
+            //Start evaluation
+            /*evaluateItemItemCF(pearsonCorrelationSimilarity, dataModel);
+            evaluateItemItemCF(logLikelihoodSimilarity, dataModel);*/
 
-                    return recommender;
-                }
-            };
-
-            RecommenderEvaluator evaluator = new AverageAbsoluteDifferenceRecommenderEvaluator();
-            RecommenderEvaluator rmseEvaluator = new RMSRecommenderEvaluator();
-            double evaluation = 0;
-            double rmseScore = 0;
-
-            evaluation = evaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
-            rmseScore = rmseEvaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
-
-            System.out.println("Average Absolute Difference: " + evaluation);
-            System.out.println("RMSE: " + rmseScore);
+            evaluateUserUser(pearsonCorrelationSimilarity, dataModel);
+            evaluateUserUser(logLikelihoodSimilarity, dataModel);
 
         } catch (TasteException e) {
             e.printStackTrace();
         }
 
+    }
+
+    public void evaluateItemItemCF(final ItemSimilarity similarityStrategy, DataModel dataModel) {
+
+        System.out.println("Item-Item CF with " + similarityStrategy.getClass() + "\n");
+        logger.info("Item-Item CF with " + similarityStrategy.getClass());
+
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        RecommenderBuilder builder = new RecommenderBuilder() {
+            public Recommender buildRecommender(DataModel model) {
+                // build and return the Recommender to evaluate here
+                Recommender recommender = new GenericItemBasedRecommender(model, similarityStrategy);
+                return recommender;
+            }
+        };
+
+        calculateAverageAbsoluteDifference(builder, dataModel);
+        calculateRmse(builder, dataModel);
+        //calculateRecallPrecision(builder, dataModel);
 
     }
 
-    public void evaluateUserUser(final String similarityStrategy) {
+    public void evaluateUserUser(final UserSimilarity similarityStrategy, DataModel dataModel) {
 
-        System.out.println("User-User Collaborative Filtering " + similarityStrategy + ": \n");
-        logger.info("User-User CF " + similarityStrategy);
+        System.out.println("User-User CF with " + similarityStrategy.getClass() + "\n");
+        logger.info("User-User CF with " + similarityStrategy.getClass());
 
-        //Ensures random testing results every time
+        //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+        RecommenderBuilder builder = new RecommenderBuilder() {
+            public Recommender buildRecommender(DataModel model) {
+                // build and return the Recommender to evaluate here
+                Recommender recommender = null;
 
-        final DataModel dataModel;
+                try {
+                    UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
+                    recommender = new GenericUserBasedRecommender(model, neighborhood, similarityStrategy);
+
+                } catch (TasteException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                return recommender;
+
+            }
+        };
+
+        calculateAverageAbsoluteDifference(builder, dataModel);
+        calculateRmse(builder, dataModel);
+        //calculateRecallPrecision(builder, dataModel);
+
+    }
+
+    /*public void timeBackEvaluation(RecommenderBuilder builder, DataModel dataModel, long userId) {
+
         try {
 
-            dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
-                    "movie_ratings",
-                    "user_id",
-                    "movie_id",
-                    "rating",
-                    "timestamp"));
+            PreferenceArray userPreferences = dataModel.getPreferencesFromUser(userId);
 
+            for (Preference currentPreference : userPreferences) {
+                long currentPreferenceTimeStamp = dataModel.getPreferenceTime(userId, currentPreference.getItemID());
 
-            RecommenderBuilder builder = new RecommenderBuilder() {
-                public Recommender buildRecommender(DataModel model) {
-                    // build and return the Recommender to evaluate here
-                    Recommender recommender = null;
-
-                    try {
-
-                        UserSimilarity userSimilarity;
-
-                        //Establish UserSimilarity based on passed parameter
-                        if (similarityStrategy.equals("pearson")) {
-                            userSimilarity = new PearsonCorrelationSimilarity(model);
-                        } else if (similarityStrategy.equals("loglike")) {
-                            userSimilarity = new LogLikelihoodSimilarity(model);
-                        } else {
-                            throw new Exception("No UserSimilarity strategy specified.");
-                        }
-
-                        UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, userSimilarity, model);
-                        recommender = new GenericUserBasedRecommender(model, neighborhood, userSimilarity);
-                    } catch (TasteException e) {
-                        e.printStackTrace();
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                for (Preference comparePreference : userPreferences) {
+                    //Skip the same preference
+                    if (comparePreference.getItemID() == currentPreference.getItemID()) {
+                        continue;
                     }
 
-                    return recommender;
+                    //Skip preferences that occurred after current preferences' timestamp
+                    if (dataModel.getPreferenceTime(userId, comparePreference.getItemID()) == currentPreferenceTimeStamp) {
+                        continue;
+                    }
+
+
 
                 }
-            };
 
-            RecommenderEvaluator evaluator = new AverageAbsoluteDifferenceRecommenderEvaluator();
-            RecommenderEvaluator rmseEvaluator = new RMSRecommenderEvaluator();
-            RecommenderIRStatsEvaluator irStatsEvaluator = new GenericRecommenderIRStatsEvaluator();
-            IRStatistics stats = null;
+            }
 
 
-            //Evaluate AAD
-            double evaluation = 0;
-            evaluation = evaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
-            System.out.println("Average Absolute Difference: " + evaluation);
 
-            //Evaluate RMSE
-            double rmseScore = 0;
-            rmseScore = rmseEvaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
-            System.out.println("RMSE: " + rmseScore);
-
-            //Evalute Precision and Recall
-            stats = irStatsEvaluator.evaluate(builder, null, dataModel, null, 10, GenericRecommenderIRStatsEvaluator.CHOOSE_THRESHOLD, 1);
-            System.out.println("Precision: " + stats.getPrecision());
-            System.out.println("Recall: " + stats.getRecall());
-
-        } catch (Exception e) {
-            logger.error("Error: " + e);
+        } catch (TasteException e) {
             e.printStackTrace();
         }
 
+    } */
 
+    public void calculateAverageAbsoluteDifference(RecommenderBuilder builder, DataModel dataModel) {
+        String msg = "Calculating the average absolute difference...";
+        logger.info(msg);
+        System.out.println(msg);
+
+        RecommenderEvaluator evaluator = new AverageAbsoluteDifferenceRecommenderEvaluator();
+        //Evaluate AAD
+        double evaluation = Double.NaN;
+        try {
+            evaluation = evaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
+        } catch (TasteException e) {
+            e.printStackTrace();
+        }
+        logger.info("Average Absolute Difference: " + evaluation);
+        System.out.println("Average Absolute Difference: " + evaluation);
+
+    }
+
+    public void calculateRmse(RecommenderBuilder builder, DataModel dataModel) {
+        String msg = "Calculating the RMSE...";
+        logger.info(msg);
+        System.out.println(msg);
+
+        RecommenderEvaluator rmseEvaluator = new RMSRecommenderEvaluator();
+        //Evaluate RMSE
+        double rmseScore = Double.NaN;
+        try {
+            rmseScore = rmseEvaluator.evaluate(builder, null, dataModel, this.trainingPercentage, this.evaluationPercentage);
+        } catch (TasteException e) {
+            e.printStackTrace();
+        }
+        logger.info("RMSE: " + rmseScore);
+        System.out.println("RMSE: " + rmseScore);
+
+    }
+
+    public void calculateRecallPrecision(RecommenderBuilder builder, DataModel dataModel) {
+        RecommenderIRStatsEvaluator irStatsEvaluator = new GenericRecommenderIRStatsEvaluator();
+        IRStatistics stats = null;
+        //Evalute Precision and Recall
+        try {
+            stats = irStatsEvaluator.evaluate(builder, null, dataModel, null, 10, /*GenericRecommenderIRStatsEvaluator.CHOOSE_THRESHOLD*/ 0.25, this.evaluationPercentage);
+        } catch (TasteException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Precision: " + stats.getPrecision());
+        System.out.println("Recall: " + stats.getRecall());
     }
 
 
