@@ -3,10 +3,7 @@ package edu.bc.casinepe;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 
 import static com.codahale.metrics.MetricRegistry.name;
@@ -16,8 +13,6 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movie")
 public class MovieResource {
-    private String username = "petercasinelli";
-    private String password = "postgres";
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
 
 
@@ -28,5 +23,39 @@ public class MovieResource {
         logger.info("Retrieving movie " + movieId);
         MovieApi movieApi = new MovieApi();
         return movieApi.getMovie(movieId);
+    }
+
+    /*
+     * Adds a new movie with post data
+     */
+    @POST
+    @Path("/")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MovieBean postMovie() {
+
+        return new MovieBean();
+    }
+
+    /*
+     * Updates a movie with movie id {movieId}
+     */
+    @PUT
+    @Path("/{movieId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MovieBean putMovie(@PathParam("movieId") int movieId) {
+
+       return new MovieBean();
+    }
+
+
+   /*
+    * Deletes a movie with movie id {movieId}
+    */
+    @DELETE
+    @Path("/{movieId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MovieBean deleteMovie(@PathParam("movieId") int movieId) {
+
+        return new MovieBean();
     }
 }
