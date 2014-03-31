@@ -8,7 +8,9 @@ import org.apache.mahout.cf.taste.impl.model.jdbc.AbstractJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.PostgreSQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
+import org.apache.mahout.cf.taste.impl.recommender.ItemAverageRecommender;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
+import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
@@ -35,13 +37,6 @@ public class MoviesResource {
     private final Timer getSimilarMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getSimilarMoviesFromDb"));
 
 
-
-    /**
-     * Method handling HTTP GET requests. The returned object will be sent
-     * to the client as "text/plain" media type.
-     *
-     * @return String that will be returned as a text/plain response.
-     */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMovies() {
@@ -66,7 +61,6 @@ public class MoviesResource {
             context.stop();
         }
 
-
     }
 
     @GET
@@ -82,12 +76,7 @@ public class MoviesResource {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
-            /*Connection con = DriverManager.getConnection(
-                    "jdbc:postgresql://localhost:5432/movie_recommender",
-                    username,
-                    password);  */
             conn = MysqlDataSource.getMysqlDataSource().getConnection();
-            //conn = MysqlDataSource.getMysqlDataSource().getConnection();
             stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
                     "FROM movie_ratings, movies " +
@@ -118,6 +107,62 @@ public class MoviesResource {
         }
 
         return null;
+    }
+
+    @GET
+    @Path("/custom/{userId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MoviesBean getMoviesFromAverageScorer(@PathParam("userId") int userId) {
+
+        MoviesBean recommendedMovies = new MoviesBean();
+
+        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+
+        final AbstractJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
+                "movie_ratings",
+                "user_id",
+                "movie_id",
+                "rating",
+                "timestamp");
+
+        ItemAverageRecommender itemAverageRecommender = null;
+
+        try {
+
+            itemAverageRecommender = new ItemAverageRecommender(dataModel);
+            IDRescorer idRescorer = new IDRescorer() {
+                @Override
+                public double rescore(long id, double originalScore) {
+                    double newScore = originalScore;
+                    try {
+                        int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
+                        newScore = originalScore - 2 / Math.sqrt(numberOfRatings);
+                    } catch (TasteException e) {
+                        e.printStackTrace();
+                    } finally {
+                        return newScore;
+                    }
+                }
+
+                @Override
+                public boolean isFiltered(long id) {
+                    return false;
+                }
+            };
+
+            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(userId, 5, idRescorer);
+
+            MovieApi movieApi = new MovieApi();
+            for (RecommendedItem item : recommendedItems) {
+                MovieBean m = movieApi.getMovie((int)item.getItemID());
+                recommendedMovies.addMovieBean(m);
+            }
+
+        } catch (TasteException e) {
+            e.printStackTrace();
+        }
+
+        return recommendedMovies;
     }
 
     @GET
@@ -186,14 +231,6 @@ public class MoviesResource {
     public MoviesBean getPersonalizedMovies(@PathParam("userId") int userId) {
 
         MoviesBean recommendedMovies = new MoviesBean();
-
-        /*PGPoolingDataSource dataSource = MysqlDataSource.getDataSource();
-        PostgreSQLJDBCDataModel dataModel = new PostgreSQLJDBCDataModel(dataSource,
-                "movie_ratings",
-                "user_id",
-                "movie_id",
-                "rating",
-                "timestamp");*/
 
         DataSource dataSource = MysqlDataSource.getMysqlDataSource();
 
