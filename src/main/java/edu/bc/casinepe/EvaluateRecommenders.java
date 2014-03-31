@@ -13,6 +13,7 @@ import org.apache.mahout.cf.taste.impl.eval.RMSRecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.ReloadFromJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood;
+import org.apache.mahout.cf.taste.impl.recommender.CachingRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.GenericUserBasedRecommender;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
@@ -39,26 +40,70 @@ public class EvaluateRecommenders {
 
         DataSource dataSource = MysqlDataSource.getMysqlDataSource();
         try {
-            DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
+            //Reload from model does not include preferences when exporting from AbstractJDBCDataModel
+/*            DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
+                                                                                    "movie_ratings",
+                                                                                    "user_id",
+                                                                                    "movie_id",
+                                                                                    "rating",
+                                                                                    "timestamp"));*/
+
+            DataModel dataModel = new MySQLJDBCDataModel(dataSource,
                     "movie_ratings",
                     "user_id",
                     "movie_id",
                     "rating",
-                    "timestamp"));
+                    "timestamp");
 
             PearsonCorrelationSimilarity pearsonCorrelationSimilarity = new PearsonCorrelationSimilarity(dataModel);
-            LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);
+            /*LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);*/
 
             //Start evaluation
             /*evaluateItemItemCF(pearsonCorrelationSimilarity, dataModel);
-            evaluateItemItemCF(logLikelihoodSimilarity, dataModel);*/
+            evaluateItemItemCF(logLikelihoodSimilarity, dataModel);
 
-            evaluateUserUser(pearsonCorrelationSimilarity, dataModel);
-            evaluateUserUser(logLikelihoodSimilarity, dataModel);
+            evaluateUserUserCF(pearsonCorrelationSimilarity, dataModel);
+            evaluateUserUserCF(logLikelihoodSimilarity, dataModel);*/
+
+            evaluateTimeBased(pearsonCorrelationSimilarity, dataModel);
+
 
         } catch (TasteException e) {
             e.printStackTrace();
         }
+
+    }
+
+    private void evaluateTimeBased(final UserSimilarity similarityStrategy, DataModel dataModel) {
+
+        logger.info("Calculating time based evaluation");
+
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        RecommenderBuilder builder = new RecommenderBuilder() {
+            public Recommender buildRecommender(DataModel model) {
+                // build and return the Recommender to evaluate here
+                Recommender recommender = null;
+
+                try {
+                    UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
+                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, similarityStrategy));
+
+                } catch (TasteException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                return recommender;
+
+            }
+        };
+
+        double[] evaluation = timeBasedEvaluator.evaluate(dataModel, builder, 93);
 
     }
 
@@ -73,7 +118,12 @@ public class EvaluateRecommenders {
         RecommenderBuilder builder = new RecommenderBuilder() {
             public Recommender buildRecommender(DataModel model) {
                 // build and return the Recommender to evaluate here
-                Recommender recommender = new GenericItemBasedRecommender(model, similarityStrategy);
+                Recommender recommender = null;
+                try {
+                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, similarityStrategy));
+                } catch (TasteException e) {
+                    e.printStackTrace();
+                }
                 return recommender;
             }
         };
@@ -84,7 +134,7 @@ public class EvaluateRecommenders {
 
     }
 
-    public void evaluateUserUser(final UserSimilarity similarityStrategy, DataModel dataModel) {
+    public void evaluateUserUserCF(final UserSimilarity similarityStrategy, DataModel dataModel) {
 
         System.out.println("User-User CF with " + similarityStrategy.getClass() + "\n");
         logger.info("User-User CF with " + similarityStrategy.getClass());
@@ -99,7 +149,7 @@ public class EvaluateRecommenders {
 
                 try {
                     UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
-                    recommender = new GenericUserBasedRecommender(model, neighborhood, similarityStrategy);
+                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, similarityStrategy));
 
                 } catch (TasteException e) {
                     e.printStackTrace();
@@ -118,39 +168,7 @@ public class EvaluateRecommenders {
 
     }
 
-    /*public void timeBackEvaluation(RecommenderBuilder builder, DataModel dataModel, long userId) {
 
-        try {
-
-            PreferenceArray userPreferences = dataModel.getPreferencesFromUser(userId);
-
-            for (Preference currentPreference : userPreferences) {
-                long currentPreferenceTimeStamp = dataModel.getPreferenceTime(userId, currentPreference.getItemID());
-
-                for (Preference comparePreference : userPreferences) {
-                    //Skip the same preference
-                    if (comparePreference.getItemID() == currentPreference.getItemID()) {
-                        continue;
-                    }
-
-                    //Skip preferences that occurred after current preferences' timestamp
-                    if (dataModel.getPreferenceTime(userId, comparePreference.getItemID()) == currentPreferenceTimeStamp) {
-                        continue;
-                    }
-
-
-
-                }
-
-            }
-
-
-
-        } catch (TasteException e) {
-            e.printStackTrace();
-        }
-
-    } */
 
     public void calculateAverageAbsoluteDifference(RecommenderBuilder builder, DataModel dataModel) {
         String msg = "Calculating the average absolute difference...";
