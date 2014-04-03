@@ -14,15 +14,15 @@ import static com.codahale.metrics.MetricRegistry.name;
 @Path("movie")
 public class MovieResource {
     private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
-
+    private MovieDAO movieDAO = new MovieDAO();
 
     @GET
     @Path("/{movieId}")
     @Produces(MediaType.APPLICATION_JSON)
     public MovieBean getMovie(@PathParam("movieId") int movieId) {
         logger.info("Retrieving movie " + movieId);
-        MovieApi movieApi = new MovieApi();
-        return movieApi.getMovie(movieId);
+        MovieDAO movieDAO = new MovieDAO();
+        return movieDAO.getMovie(movieId);
     }
 
     /*
@@ -31,9 +31,9 @@ public class MovieResource {
     @POST
     @Path("/")
     @Produces(MediaType.APPLICATION_JSON)
-    public MovieBean postMovie() {
+    public MovieBean postMovie(MovieBean movie) {
 
-        return new MovieBean();
+        return movieDAO.addMovie(movie);
     }
 
     /*
@@ -42,9 +42,9 @@ public class MovieResource {
     @PUT
     @Path("/{movieId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public MovieBean putMovie(@PathParam("movieId") int movieId) {
+    public MovieBean putMovie(MovieBean movie) {
 
-       return new MovieBean();
+       return movieDAO.editMovie(movie);
     }
 
 
@@ -54,8 +54,8 @@ public class MovieResource {
     @DELETE
     @Path("/{movieId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public MovieBean deleteMovie(@PathParam("movieId") int movieId) {
+    public MovieBean deleteMovie(MovieBean movie) {
 
-        return new MovieBean();
+        return movieDAO.deleteMovie(movie);
     }
 }

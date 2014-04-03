@@ -6,7 +6,6 @@ import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.impl.model.jdbc.AbstractJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
-import org.apache.mahout.cf.taste.impl.model.jdbc.PostgreSQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.ItemAverageRecommender;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
@@ -15,7 +14,6 @@ import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
-import org.postgresql.ds.PGPoolingDataSource;
 
 
 import javax.sql.DataSource;
@@ -152,9 +150,9 @@ public class MoviesResource {
 
             List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(userId, 5, idRescorer);
 
-            MovieApi movieApi = new MovieApi();
+            MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendedItems) {
-                MovieBean m = movieApi.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovie((int)item.getItemID());
                 recommendedMovies.addMovieBean(m);
             }
 
@@ -199,16 +197,15 @@ public class MoviesResource {
                     "rating",
                     "timestamp");
 
-
             logger.info("Finding similar items for movie id " + movieId);
             //ItemSimilarity itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
             ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
             ItemBasedRecommender recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
 
             List<RecommendedItem> recommendations = recommender.mostSimilarItems(movieId, number);
-            MovieApi movieApi = new MovieApi();
+            MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendations) {
-                MovieBean m = movieApi.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovie((int)item.getItemID());
                 recommendedMovies.addMovieBean(m);
             }
             logger.info("Similar items are: " + recommendations);
@@ -249,9 +246,9 @@ public class MoviesResource {
             //DiffStorage diffStorage = new MemoryDiffStorage(dataModel, Weighting.UNWEIGHTED, Long.MAX_VALUE);
             //recommender = new CachingRecommender(new SlopeOneRecommender(dataModel, Weighting.UNWEIGHTED, Weighting.UNWEIGHTED, diffStorage));
             List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
-            MovieApi movieApi = new MovieApi();
+            MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendations) {
-                MovieBean m = movieApi.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovie((int)item.getItemID());
                 recommendedMovies.addMovieBean(m);
             }
 
