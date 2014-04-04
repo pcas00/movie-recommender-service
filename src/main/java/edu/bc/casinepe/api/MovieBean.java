@@ -1,4 +1,4 @@
-package edu.bc.casinepe;
+package edu.bc.casinepe.api;
 
 import org.codehaus.jackson.annotate.JsonProperty;
 

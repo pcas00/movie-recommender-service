@@ -1,6 +1,13 @@
-package edu.bc.casinepe;
+package edu.bc.casinepe.resources;
 
 import com.codahale.metrics.Timer;
+import edu.bc.casinepe.api.MovieBean;
+import edu.bc.casinepe.api.MoviesBean;
+import edu.bc.casinepe.core.FileRatings;
+import edu.bc.casinepe.core.VectorOperations;
+import edu.bc.casinepe.jdbc.MovieDAO;
+import edu.bc.casinepe.jdbc.MysqlDataSource;
+import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;

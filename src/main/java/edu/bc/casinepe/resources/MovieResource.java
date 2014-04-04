@@ -1,5 +1,7 @@
-package edu.bc.casinepe;
+package edu.bc.casinepe.resources;
 
+import edu.bc.casinepe.api.MovieBean;
+import edu.bc.casinepe.jdbc.MovieDAO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

@@ -1,4 +1,4 @@
-package edu.bc.casinepe;
+package edu.bc.casinepe.core;
 
 import java.io.BufferedReader;
 import java.io.FileReader;

@@ -1,4 +1,4 @@
-package edu.bc.casinepe;
+package edu.bc.casinepe.jdbc;
 
 import org.apache.commons.dbcp.*;
 import org.apache.commons.pool.ObjectPool;
@@ -50,8 +50,8 @@ public class MysqlDataSource {
 //		p.setProperty("characterEncoding", "UTF-8");
 
         ConnectionFactory connectionFactory = new DriverManagerConnectionFactory(
-                /*"jdbc:mysql://movie-recommender.cunjeovcml9v.us-east-1.rds.amazonaws.com:3306/movie_recommender", "pcasinelli", "alvarez2014"*/
-                "jdbc:mysql://localhost/movie_recommender", "root", "");
+                "jdbc:mysql://movie-recommender.cunjeovcml9v.us-east-1.rds.amazonaws.com:3306/movie_recommender", "pcasinelli", "alvarez2014"
+                /*"jdbc:mysql://localhost/movie_recommender", "root", ""*/);
 //		ConnectionFactory connectionFactory = new DriverManagerConnectionFactory(
 //				connectURI, p);
         //
@@ -68,7 +68,7 @@ public class MysqlDataSource {
         //
         PoolingDataSource poolingDataSource = new PoolingDataSource(connectionPool);
 
-        return poolingDataSource;
+        return new ConnectionPoolDataSource(poolingDataSource);
     }
 
 }
