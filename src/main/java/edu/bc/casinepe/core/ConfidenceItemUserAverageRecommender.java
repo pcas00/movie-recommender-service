@@ -1,0 +1,255 @@
+package edu.bc.casinepe.core;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import org.apache.mahout.cf.taste.common.NoSuchUserException;
+import org.apache.mahout.cf.taste.common.Refreshable;
+import org.apache.mahout.cf.taste.common.TasteException;
+import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
+import org.apache.mahout.cf.taste.impl.common.FastIDSet;
+import org.apache.mahout.cf.taste.impl.common.FullRunningAverage;
+import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
+import org.apache.mahout.cf.taste.impl.common.RefreshHelper;
+import org.apache.mahout.cf.taste.impl.common.RunningAverage;
+import org.apache.mahout.cf.taste.impl.recommender.AbstractRecommender;
+import org.apache.mahout.cf.taste.impl.recommender.TopItems;
+import org.apache.mahout.cf.taste.model.DataModel;
+import org.apache.mahout.cf.taste.model.PreferenceArray;
+import org.apache.mahout.cf.taste.recommender.IDRescorer;
+import org.apache.mahout.cf.taste.recommender.RecommendedItem;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+
+
+import com.google.common.base.Preconditions;
+
+/**
+ * Created by petercasinelli on 4/1/14.
+ */
+public class ConfidenceItemUserAverageRecommender extends AbstractRecommender {
+
+    private static Logger logger = LogManager.getLogger(ConfidenceItemUserAverageRecommender.class);
+    private final FastByIDMap<RunningAverage> itemAverages;
+    private final FastByIDMap<RunningAverage> userAverages;
+    private final RunningAverage overallAveragePrefValue;
+    private final ReadWriteLock buildAveragesLock;
+    private final RefreshHelper refreshHelper;
+
+    public static final double RESCORE_CONSTANT_VALUE = 2;
+
+    public ConfidenceItemUserAverageRecommender(DataModel dataModel) throws TasteException {
+        super(dataModel);
+        this.itemAverages = new FastByIDMap<RunningAverage>();
+        this.userAverages = new FastByIDMap<RunningAverage>();
+        this.overallAveragePrefValue = new FullRunningAverage();
+        this.buildAveragesLock = new ReentrantReadWriteLock();
+        this.refreshHelper = new RefreshHelper(new Callable<Object>() {
+            @Override
+            public Object call() throws TasteException {
+                buildAverageDiffs();
+                return null;
+            }
+        });
+        refreshHelper.addDependency(dataModel);
+        buildAverageDiffs();
+    }
+
+    @Override
+    public List<RecommendedItem> recommend(long userID, int howMany, IDRescorer rescorer) throws TasteException {
+
+        Preconditions.checkArgument(howMany >= 1, "howMany must be at least 1");
+        logger.debug("Recommending items for user ID '{}'", userID);
+
+        PreferenceArray preferencesFromUser = getDataModel().getPreferencesFromUser(userID);
+        FastIDSet possibleItemIDs = getAllOtherItems(userID, preferencesFromUser);
+
+        TopItems.Estimator<Long> estimator = new Estimator(userID);
+
+
+        IDRescorer customIdRescorer = new IDRescorer() {
+            @Override
+            public double rescore(long id, double originalScore) {
+                double newScore = originalScore;
+                try {
+                    int numberOfRatings = getDataModel().getNumUsersWithPreferenceFor(id);
+                    newScore = originalScore - RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
+                } catch (TasteException e) {
+                    e.printStackTrace();
+                } finally {
+                    return newScore;
+                }
+            }
+
+            @Override
+            public boolean isFiltered(long id) {
+                return false;
+            }
+        };
+
+        MultipleIDRescorer multipleIDRescorer = new MultipleIDRescorer(rescorer);
+        multipleIDRescorer.addIdRescorer(customIdRescorer);
+
+        List<RecommendedItem> topItems = TopItems.getTopItems(howMany, possibleItemIDs.iterator(), multipleIDRescorer,
+                estimator);
+
+        logger.debug("Recommendations are: {}", topItems);
+        return topItems;
+    }
+
+
+    @Override
+    public float estimatePreference(long userID, long itemID) throws TasteException {
+        DataModel dataModel = getDataModel();
+        Float actualPref = dataModel.getPreferenceValue(userID, itemID);
+        if (actualPref != null) {
+            return actualPref;
+        }
+        return doEstimatePreference(userID, itemID);
+    }
+
+    private float doEstimatePreference(long userID, long itemID) {
+        buildAveragesLock.readLock().lock();
+        try {
+            RunningAverage itemAverage = itemAverages.get(itemID);
+            if (itemAverage == null) {
+                return Float.NaN;
+            }
+            RunningAverage userAverage = userAverages.get(userID);
+            if (userAverage == null) {
+                return Float.NaN;
+            }
+            double userDiff = userAverage.getAverage() - overallAveragePrefValue.getAverage();
+
+            int numberOfRatings = getDataModel().getNumUsersWithPreferenceFor(itemID);
+            double confidenceDiff = (itemAverage.getAverage() + userDiff) - RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
+            logger.info("Estimate preference for ConfidenceItemUserAverageRecommender: would have been " + itemAverage.getAverage() +
+                    " but is " + confidenceDiff);
+            return (float) (confidenceDiff);
+        } catch (TasteException e) {
+            logger.error(e.getMessage());
+            return 0f;
+        } finally {
+            buildAveragesLock.readLock().unlock();
+        }
+    }
+
+    private void buildAverageDiffs() throws TasteException {
+        try {
+            buildAveragesLock.writeLock().lock();
+            DataModel dataModel = getDataModel();
+            LongPrimitiveIterator it = dataModel.getUserIDs();
+            while (it.hasNext()) {
+                long userID = it.nextLong();
+                PreferenceArray prefs = dataModel.getPreferencesFromUser(userID);
+                int size = prefs.length();
+                for (int i = 0; i < size; i++) {
+                    long itemID = prefs.getItemID(i);
+                    float value = prefs.getValue(i);
+                    addDatumAndCreateIfNeeded(itemID, value, itemAverages);
+                    addDatumAndCreateIfNeeded(userID, value, userAverages);
+                    overallAveragePrefValue.addDatum(value);
+                }
+            }
+        } finally {
+            buildAveragesLock.writeLock().unlock();
+        }
+    }
+
+    private static void addDatumAndCreateIfNeeded(long itemID, float value, FastByIDMap<RunningAverage> averages) {
+        RunningAverage itemAverage = averages.get(itemID);
+        if (itemAverage == null) {
+            itemAverage = new FullRunningAverage();
+            averages.put(itemID, itemAverage);
+        }
+        itemAverage.addDatum(value);
+    }
+
+    @Override
+    public void setPreference(long userID, long itemID, float value) throws TasteException {
+        DataModel dataModel = getDataModel();
+        double prefDelta;
+        try {
+            Float oldPref = dataModel.getPreferenceValue(userID, itemID);
+            prefDelta = oldPref == null ? value : value - oldPref;
+        } catch (NoSuchUserException nsee) {
+            prefDelta = value;
+        }
+        super.setPreference(userID, itemID, value);
+        try {
+            buildAveragesLock.writeLock().lock();
+            RunningAverage itemAverage = itemAverages.get(itemID);
+            if (itemAverage == null) {
+                RunningAverage newItemAverage = new FullRunningAverage();
+                newItemAverage.addDatum(prefDelta);
+                itemAverages.put(itemID, newItemAverage);
+            } else {
+                itemAverage.changeDatum(prefDelta);
+            }
+            RunningAverage userAverage = userAverages.get(userID);
+            if (userAverage == null) {
+                RunningAverage newUserAveragae = new FullRunningAverage();
+                newUserAveragae.addDatum(prefDelta);
+                userAverages.put(userID, newUserAveragae);
+            } else {
+                userAverage.changeDatum(prefDelta);
+            }
+            overallAveragePrefValue.changeDatum(prefDelta);
+        } finally {
+            buildAveragesLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void removePreference(long userID, long itemID) throws TasteException {
+        DataModel dataModel = getDataModel();
+        Float oldPref = dataModel.getPreferenceValue(userID, itemID);
+        super.removePreference(userID, itemID);
+        if (oldPref != null) {
+            try {
+                buildAveragesLock.writeLock().lock();
+                RunningAverage itemAverage = itemAverages.get(itemID);
+                if (itemAverage == null) {
+                    throw new IllegalStateException("No preferences exist for item ID: " + itemID);
+                }
+                itemAverage.removeDatum(oldPref);
+                RunningAverage userAverage = userAverages.get(userID);
+                if (userAverage == null) {
+                    throw new IllegalStateException("No preferences exist for user ID: " + userID);
+                }
+                userAverage.removeDatum(oldPref);
+                overallAveragePrefValue.removeDatum(oldPref);
+            } finally {
+                buildAveragesLock.writeLock().unlock();
+            }
+        }
+    }
+
+    @Override
+    public void refresh(Collection<Refreshable> alreadyRefreshed) {
+        refreshHelper.refresh(alreadyRefreshed);
+    }
+
+    @Override
+    public String toString() {
+        return "ItemUserAverageRecommender";
+    }
+
+    private final class Estimator implements TopItems.Estimator<Long> {
+
+        private final long userID;
+
+        private Estimator(long userID) {
+            this.userID = userID;
+        }
+
+        @Override
+        public double estimate(Long itemID) {
+            return doEstimatePreference(userID, itemID);
+        }
+    }
+
+}
