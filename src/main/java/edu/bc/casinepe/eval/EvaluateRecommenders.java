@@ -1,7 +1,8 @@
 package edu.bc.casinepe.eval;
 
+import com.codahale.metrics.Timer;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
-import edu.bc.casinepe.core.ConfidenceItemUserAverageRecommender;
+import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -17,6 +18,7 @@ import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.ReloadFromJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood;
 import org.apache.mahout.cf.taste.impl.recommender.*;
+import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
 import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.neighborhood.UserNeighborhood;
@@ -28,37 +30,48 @@ import org.apache.mahout.cf.taste.similarity.UserSimilarity;
 import javax.sql.DataSource;
 import java.util.Random;
 
+import static com.codahale.metrics.MetricRegistry.name;
+
 public class EvaluateRecommenders {
     private static Logger logger = LogManager.getLogger(EvaluateRecommenders.class.getName());
+    private final Timer modifiedItemAverageTimer = MetricSystem.metrics.timer(name(TimeBasedEvaluator.class, "modifiedItemAverage"));
+
     private double trainingPercentage;
     private double evaluationPercentage;
+    private double pessimisticValue;
 
     public EvaluateRecommenders(String[] args) {
+
+        //Start the metric system
+        MetricSystem.start();
+
         //Retrieve training and evaluation percentage from arguments
         this.trainingPercentage = Double.parseDouble(args[0]);
         this.evaluationPercentage = Double.parseDouble(args[1]);
+        this.pessimisticValue = Double.parseDouble(args[2]);
 
         System.out.println("Training percentage is : " + trainingPercentage + " and evaluation percentage is: " + evaluationPercentage);
+        System.out.println("Pessimistic value is: " + pessimisticValue);
 
-        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+
         try {
             //Reload from model does not include preferences when exporting from AbstractJDBCDataModel
-            DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
+            /*DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
                                                                                     "movie_ratings",
                                                                                     "user_id",
                                                                                     "movie_id",
                                                                                     "rating",
-                                                                                    "timestamp"));
+                                                                                    "timestamp"));*/
 
-            /*DataModel dataModel = new MySQLJDBCDataModel(dataSource,
+            DataModel dataModel = new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
                     "movie_ratings",
                     "user_id",
                     "movie_id",
                     "rating",
-                    "timestamp");*/
+                    "timestamp");
 
             PearsonCorrelationSimilarity pearsonCorrelationSimilarity = new PearsonCorrelationSimilarity(dataModel);
-            //LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);*/
+            LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);
 
             //Start evaluation
             /*evaluateItemItemCF(pearsonCorrelationSimilarity, dataModel);
@@ -69,19 +82,15 @@ public class EvaluateRecommenders {
 
             // Non-Personalized Recommenders
 
-            /*evaluateItemAverageRecommender(dataModel);
-            evaluateModifiedItemAverageRecommender(dataModel);*/
+            //evaluateItemAverageRecommender(dataModel);
+            //evaluateModifiedItemAverageRecommender(dataModel);
             /*evaluateItemUserAverageRecommender(dataModel);
             evaluateModifiedItemUserAverageRecommender(dataModel);*/
 
             // Time Based Evaluation
 
-            //evaluateTimeBased(pearsonCorrelationSimilarity, dataModel);
-            evaluateIntroduceNewPreference(dataModel, pearsonCorrelationSimilarity);
-
-
-
-
+            evaluateTimeBased(pearsonCorrelationSimilarity, dataModel);
+            //evaluateIntroduceNewPreference(dataModel, pearsonCorrelationSimilarity);
 
         } catch (TasteException e) {
             e.printStackTrace();
@@ -89,56 +98,28 @@ public class EvaluateRecommenders {
 
     }
 
-    public void evaluateIntroduceNewPreference(DataModel dataModel, final UserSimilarity similarityStrategy) {
+    public void evaluateIntroduceNewPreference(DataModel dataModel, final ItemSimilarity similarityStrategy) {
+        // System.out.println("user_id,item_id,aad,rmse,pref_count");
+        logger.info("Evaluating introducing new preferences using " + similarityStrategy.getClass());
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        final Random random = org.apache.mahout.common.RandomUtils.getRandom();
-
-        LongPrimitiveIterator it = null;
-        try {
-
-            it = dataModel.getUserIDs();
-            TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
-
-            //Ensures random testing results every test
-            org.apache.mahout.common.RandomUtils.useTestSeed();
-
-            RecommenderBuilder builder = new RecommenderBuilder() {
-                public Recommender buildRecommender(DataModel model) {
-                    // build and return the Recommender to evaluate here
-                    Recommender recommender = null;
-
-                    try {
-                        UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
-                        recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, similarityStrategy));
-
-                    } catch (TasteException e) {
-                        e.printStackTrace();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
-                    return recommender;
-
+        RecommenderBuilder builder = new RecommenderBuilder() {
+            public Recommender buildRecommender(DataModel model) {
+                // build and return the Recommender to evaluate here
+                Recommender recommender = null;
+                try {
+                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, similarityStrategy));
+                } catch (TasteException e) {
+                    e.printStackTrace();
                 }
-            };
-
-            System.out.println("user_id,item_id,aad,rmse,pref_count");
-
-            while (it.hasNext()) {
-
-                if (random.nextDouble() > this.evaluationPercentage) {
-                    //Skipped
-                    continue;
-                }
-
-                timeBasedEvaluator.evaluateNewPreferences(dataModel, builder, it.nextLong(), this.evaluationPercentage);
-
+                return recommender;
             }
+        };
 
+        timeBasedEvaluator.introduceNewRatings(dataModel, builder, 10, 76);
 
-        } catch (TasteException e) {
-            e.printStackTrace();
-        }
 
     }
 
@@ -171,45 +152,52 @@ public class EvaluateRecommenders {
         System.out.println("Modified Item Average Recommender");
         logger.info("Modified Item Average Recommender");
 
-        //Ensures random testing results every test
-        org.apache.mahout.common.RandomUtils.useTestSeed();
+        final Timer.Context context = modifiedItemAverageTimer.time();
+        try {
+            //Ensures random testing results every test
+            org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        RecommenderBuilder builder = new RecommenderBuilder() {
-            public Recommender buildRecommender(DataModel model) {
-                // build and return the Recommender to evaluate here
-                Recommender recommender = null;
-                try {
-                    recommender = new CachingRecommender(new ItemAverageRecommender(model));
-                } catch (TasteException e) {
-                    e.printStackTrace();
+            RecommenderBuilder builder = new RecommenderBuilder() {
+                public Recommender buildRecommender(DataModel model) {
+                    // build and return the Recommender to evaluate here
+                    Recommender recommender = null;
+                    try {
+                        recommender = new CachingRecommender(new ItemAverageRecommender(model));
+                    } catch (TasteException e) {
+                        e.printStackTrace();
+                    }
+                    return recommender;
                 }
-                return recommender;
-            }
-        };
+            };
 
-        IDRescorer customIdRescorer = new IDRescorer() {
-            @Override
-            public double rescore(long id, double originalScore) {
-                double newScore = originalScore;
-                try {
-                    int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
-                    newScore = originalScore - ConfidenceItemUserAverageRecommender.RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } finally {
-                    return newScore;
+            IDRescorer customIdRescorer = new IDRescorer() {
+                @Override
+                public double rescore(long id, double originalScore) {
+                    double newScore = originalScore;
+                    try {
+                        int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
+                        newScore = originalScore - pessimisticValue / Math.sqrt(numberOfRatings);
+                    } catch (TasteException e) {
+                        e.printStackTrace();
+                    } finally {
+                        return newScore;
+                    }
                 }
-            }
 
-            @Override
-            public boolean isFiltered(long id) {
-                return false;
-            }
-        };
+                @Override
+                public boolean isFiltered(long id) {
+                    return false;
+                }
+            };
 
-        //calculateAverageAbsoluteDifference(builder, dataModel);
-        //calculateRmse(builder, dataModel);
-        calculateRecallPrecision(builder, dataModel, customIdRescorer);
+            //calculateAverageAbsoluteDifference(builder, dataModel);
+            //calculateRmse(builder, dataModel);
+            calculateRecallPrecision(builder, dataModel, customIdRescorer);
+
+        } finally {
+            context.stop();
+        }
+
     }
 
     private void evaluateItemUserAverageRecommender(DataModel dataModel) {
@@ -264,7 +252,7 @@ public class EvaluateRecommenders {
                 double newScore = originalScore;
                 try {
                     int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
-                    newScore = originalScore - ConfidenceItemUserAverageRecommender.RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
+                    newScore = originalScore - pessimisticValue / Math.sqrt(numberOfRatings);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 } finally {
@@ -286,7 +274,7 @@ public class EvaluateRecommenders {
 
     private void evaluateTimeBased(final UserSimilarity similarityStrategy, DataModel dataModel) {
 
-        logger.info("Calculating time based evaluation");
+        logger.info("Calculating time based evaluation with similarity strategy: " + similarityStrategy.getClass());
 
         TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
 
@@ -313,7 +301,7 @@ public class EvaluateRecommenders {
             }
         };
 
-        double[] evaluation = timeBasedEvaluator.evaluate(dataModel, builder, 5386);
+        timeBasedEvaluator.evaluateTimeContext(dataModel, builder, 10, 20);
 
     }
 
