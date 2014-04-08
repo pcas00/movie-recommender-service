@@ -24,7 +24,7 @@ public class MovieDAO {
         Connection conn = null;
         Statement stmt = null;
         try {
-            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(movie_ratings.rating) as average_rating " +
                     "FROM movie_ratings, movies " +
@@ -59,7 +59,7 @@ public class MovieDAO {
         ResultSet rs = null;
 
         try {
-            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.prepareStatement("INSERT INTO movies");
             //stmt.setLong(1, userId);
 
@@ -80,7 +80,7 @@ public class MovieDAO {
         ResultSet rs = null;
 
         try {
-            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.prepareStatement("INSERT INTO movies");
             //stmt.setLong(1, userId);
 
@@ -100,7 +100,7 @@ public class MovieDAO {
         ResultSet rs = null;
 
         try {
-            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.prepareStatement("DELETE FROM movies WHERE id=? LIMIT 1");
             stmt.setLong(1, movie.getId());
 

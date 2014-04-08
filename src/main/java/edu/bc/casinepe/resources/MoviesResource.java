@@ -81,7 +81,7 @@ public class MoviesResource {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
-            conn = MysqlDataSource.getMysqlDataSource().getConnection();
+            conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
                     "FROM movie_ratings, movies " +
@@ -121,7 +121,7 @@ public class MoviesResource {
 
         MoviesBean recommendedMovies = new MoviesBean();
 
-        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+        DataSource dataSource = MysqlDataSource.getDataSource();
 
         final AbstractJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
                 "movie_ratings",
@@ -195,7 +195,7 @@ public class MoviesResource {
             //Setting up a data source to manage DB connection pooling
             //PGConnectionPoolDataSource dataSource2 = new PGConnectionPoolDataSource();
 
-            DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+            DataSource dataSource = MysqlDataSource.getDataSource();
 
             MySQLJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
                     "movie_ratings",
@@ -236,7 +236,7 @@ public class MoviesResource {
 
         MoviesBean recommendedMovies = new MoviesBean();
 
-        DataSource dataSource = MysqlDataSource.getMysqlDataSource();
+        DataSource dataSource = MysqlDataSource.getDataSource();
 
         final AbstractJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
                 "movie_ratings",
