@@ -6,6 +6,7 @@ import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.similarities.Similarity;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
@@ -36,15 +37,16 @@ public class TimeBasedEvaluator {
     private static Logger logger = LogManager.getLogger(TimeBasedEvaluator.class);
     private final Timer newUserPreferences = MetricSystem.metrics.timer(name(TimeBasedEvaluator.class, "newUserPreferences"));
 
-    public void evaluateTimeContext(DataModel dataModel,
-                                    RecommenderBuilder builder,
-                                    int incrementPreferencesBy,
-                                    int maxPreferencesToUse) {
+    public void introduceNonTargetDataIncrements(DataModel dataModel,
+                                                 RecommenderBuilder builder,
+                                                 String similarityStrategy,
+                                                 int incrementPreferencesBy) {
 
-        int finallyCounter = 0;
+
         // Keep average metrics for this pref
         RunningAverage totalAadAverage = new FullRunningAverage();
         RunningAverage totalRmseAverage = new FullRunningAverage();
+
 
 
         // Keep a map of # of preferences and list of average metrics for drill down
@@ -53,259 +55,265 @@ public class TimeBasedEvaluator {
         List<String> averageRmseByIncrementsList = new LinkedList<String>();
 
         // Get all ratings before T0 for all users and store in a data model
-        FastByIDMap<PreferenceArray> dataBeforeTimeZero = getRatingsBeforeTimestamp(973018006, null);
-
-        // Get list of users that had 76 preferences after T0
-        List<Long> userIds = getSecondHalfUsers();
-
-        try {
-            // For each user u
-
-            // Initialize a data model that will add past preferences incrementally
-            //DataModel incrementalDataModel = new GenericDataModel(GenericDataModel.toDataMap(dataModel));
-
-            double totalPreferences = 0.;
-            double totalEstimatedPreferences = 0.;
-            double notAbleToRecommend = 0.;
+        //List<Preference> dataBeforeTimeZero = getRatingsByTimestamp(973018006, '<', "AND user_id NOT IN (SELECT user_id FROM second_half_users)");
+        List<Preference> dataBeforeTimeZero = getRatingsByTimestamp(973018006, '<', null);
 
 
+        //Randomize order of preferences
+        Collections.shuffle(dataBeforeTimeZero);
+        logger.info("There are " + dataBeforeTimeZero.size() + " ratings that occurred before T0");
+
+        //Load a data model with all preferences between T0
+        DataModel incrementalDataModel = new GenericDataModel(listToFastByIDMap(dataBeforeTimeZero));
+
+        // Get list of users that had 76 (median #) preferences after T0
+        List<Long> userIds = getHalfOfUsers("second");
+
+        // Add 50 preferences from all users
+        FastByIDMap<PreferenceArray> secondHalfUsersRatings = new FastByIDMap<PreferenceArray>();
+        for (long userId : userIds) {
+            List<Preference> userPreferences = getUserPreferencesByTimestamp(userId);
+            List<Preference> userPreferenceSubset = new ArrayList(50);
+            for (int i = 0; i < 50; i++) {
+                userPreferenceSubset.add(userPreferences.get(i));
+            }
+            logger.info("Add 50 preferences for " + userId);
+            PreferenceArray userPrefArray = new GenericUserPreferenceArray(userPreferenceSubset);
+            secondHalfUsersRatings.put(userId, userPrefArray);
+        }
+
+        //Add 50 ratings from users who rated median after 76 ratings after T0
+        incrementalDataModel = addPreferencesToDatamodel(secondHalfUsersRatings, incrementalDataModel);
+
+        double totalPreferences = 0.;
+        double totalEstimatedPreferences = 0.;
+        double notAbleToRecommend = 0.;
+
+        //Add 1000 ratings before T0 that do not include second half users to an incremental data model
+
+        // For all ratings that occurred before T0 and do not include any user from userIds
+        for (int i = incrementPreferencesBy; i < dataBeforeTimeZero.size(); i += incrementPreferencesBy) {
+
+            // Add incrementPreferencesBy preferences from dataBeforeTimeZero
+            List<Preference> newPreferencesToIntroduce = new ArrayList(incrementPreferencesBy);
+            for (int j = i - incrementPreferencesBy; j < i + incrementPreferencesBy; j++) {
+                newPreferencesToIntroduce.add(dataBeforeTimeZero.get(j));
+            }
+            logger.info(newPreferencesToIntroduce.size() + " have been introduced for all users");
+            incrementalDataModel = addPreferencesToDatamodel(listToFastByIDMap(newPreferencesToIntroduce), incrementalDataModel);
+
+            //Evaluate all users who have 76 ratings after T0 using the incremental data model
+
+            //For each user
             for (Long userId : userIds) {
 
                 RunningAverage userAadAverage = new FullRunningAverage();
                 RunningAverage userRmseAverage = new FullRunningAverage();
 
-                logger.info("Time based experiment for user " + userId);
-
-                //Instantiate new data model for each user with data before T0
-                DataModel incrementalDataModel = new GenericDataModel(dataBeforeTimeZero);
-
-                //Get preferences for user ordered by timestamp (use SQL)
+                // Get their preferences that occurred after T0
                 List<Preference> userPreferences = getUserPreferencesByTimestamp(userId);
 
-                // For each {incrementAmount} preferences p
+                //Evaluating from 50 to 70
+                for (int pref = 50; pref < 76; pref++) {
 
-                //Ceiling should be number that is less than userPreferencesLength, less than maxPreferencesToUse
-                for (int i = 0; i < userPreferences.size(); i += incrementPreferencesBy) {
-                    // Add all preferences that occurred before p
-                    logger.info("i is " + i);
+                    Preference futurePref = userPreferences.get(pref);
 
-                    // Is this being used correctly?
-                    int ceiling = calculatePreferenceCeiling(i, incrementPreferencesBy, userPreferences.size(), maxPreferencesToUse);
-                    logger.info("Ceiling: " + ceiling);
-                    if (ceiling == 0) {
-                        break;
+                    totalPreferences++;
+
+                    double diff = evaluateRecommenderForUser(builder, futurePref.getUserID(), futurePref.getItemID(), incrementalDataModel, dataModel);
+                    // Only count recommendations that were not NaN's or cases in which RS was unable to estimate preferences
+                    if (!Double.isNaN(diff)) {
+                        logger.info("Calculated difference: " + diff + " for " + userId);
+                        userAadAverage.addDatum(Math.abs(diff));
+                        userRmseAverage.addDatum(diff * diff);
+
+                        averageAadsByIncrementsList.add(i + "," + userId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+                        averageRmseByIncrementsList.add(i + "," + userId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+
+                        //Increase # of estimated preferences for coverage
+                        totalEstimatedPreferences++;
+
+                    } else {
+                        logger.info("NaN diff for user " + userId + " after " + i + " preferences");
+                        notAbleToRecommend++;
                     }
-
-                    Preference firstPref = userPreferences.get(i);
-                    Preference lastPref = userPreferences.get(ceiling);
-
-                    long lowerTimestamp = dataModel.getPreferenceTime(firstPref.getUserID(), firstPref.getItemID());
-                    long upperTimestamp = dataModel.getPreferenceTime(lastPref.getUserID(), lastPref.getItemID());
-
-                    /*logger.info("User: " + userId + " first pref occurred at " + lowerTimestamp);
-                    logger.info("User: " + userId + " last pref occurred at " + upperTimestamp);*/
-
-                    //SQL select all preferences that occurred after last timestamp and before i + incrementPreferencesBy preference timestamp
-                    FastByIDMap<PreferenceArray> userPreferencesBetweenTimestamps = getResultsBetweenTimestamps(lowerTimestamp, upperTimestamp);
-
-                    //logger.info("userPreferencesBetweenTimestamp " + userPreferencesBetweenTimestamps + " Incremental data model: " + incrementalDataModel);
-                    // Add all preferences that occurred over time to incrementalDataModel
-                    logger.info("Users before adding to datamodel: " + incrementalDataModel.getNumUsers());
-                    incrementalDataModel = addPreferencesToDatamodel(userPreferencesBetweenTimestamps, incrementalDataModel);
-                    logger.info("Users after adding to datamodel: " + incrementalDataModel.getNumUsers());
-
-
-                    int preferencesToEvaluate = (userPreferences.size() < maxPreferencesToUse) ? userPreferences.size() : maxPreferencesToUse;
-                    logger.info("Preferences to evaluate: " + preferencesToEvaluate);
-                    // Evaluate future preferences for user u
-                    for (int k = ceiling; k <  preferencesToEvaluate; k++) {
-                        Preference futurePref = userPreferences.get(k);
-                        totalPreferences++;
-                        double diff = evaluateRecommenderForUser(builder, futurePref.getUserID(), futurePref.getItemID(), incrementalDataModel, dataModel);
-                        // Only count recommendations that were not NaN's or cases in which RS was unable to estimate preferences
-                        if (!Double.isNaN(diff)) {
-                            logger.info("Calculated difference: " + diff + " for " + userId);
-                            userAadAverage.addDatum(Math.abs(diff));
-                            userRmseAverage.addDatum(diff * diff);
-                            //Increase # of estimated preferences for coverage
-                            totalEstimatedPreferences++;
-                        } else {
-                            logger.info("NaN diff for user " + userId + " after " + ceiling + " preferences");
-                            notAbleToRecommend++;
-                        }
-
-                    }
-                    // Add averages to list for increments
-                    averageAadsByIncrementsList.add(ceiling + "," + userId + "," + userAadAverage.getAverage());
-                    averageRmseByIncrementsList.add(ceiling + "," + userId + "," + userRmseAverage.getAverage());
-
-                    // Add averages to total averages
-                    totalAadAverage.addDatum(userAadAverage.getAverage());
-                    totalRmseAverage.addDatum((userRmseAverage.getAverage()));
-
-                    logger.info("User " + userId + " AAD Average: " + userAadAverage.getAverage() + " RMSE Average: " + userRmseAverage.getAverage());
 
                 }
 
+                // Add averages to list for increments if they are not NaN
+
+                if (!Double.isNaN(userAadAverage.getAverage())) {
+                    averageAadsByIncrementsList.add(i + "," + userId + "," + userAadAverage.getAverage());
+                    // Add averages to total averages
+                    totalAadAverage.addDatum(userAadAverage.getAverage());
+                }
+
+                if (!Double.isNaN(userRmseAverage.getAverage())) {
+                    averageRmseByIncrementsList.add(i + "," + userId + "," + userRmseAverage.getAverage());
+                    totalRmseAverage.addDatum((userRmseAverage.getAverage()));
+                }
+
+                logger.info("Coverage is " + (totalEstimatedPreferences / totalPreferences));
+                logger.info("User " + userId + " AAD Average: " + userAadAverage.getAverage() + " RMSE Average: " + userRmseAverage.getAverage());
+
+
+
             }
 
-            logger.info("Total AAD Average: " + totalAadAverage.getAverage() + " Total RMSE Average: " + totalRmseAverage.getAverage());
-
-            printList("time-context-average-aad-by-preference", averageAadsByIncrementsList);
-            printList("time-context-average-rmse-by-preference", averageRmseByIncrementsList);
-
-            logger.info("Could not recommend in " + notAbleToRecommend + " cases.");
-            logger.info("Data coverage: " + (totalEstimatedPreferences / totalPreferences));
-
-        } catch (TasteException e) {
-            logger.error(e.getMessage());
-            e.printStackTrace();
-        } finally {
-            logger.info("Reached finally " + (++finallyCounter) + " times");
-            System.out.println("Reached finally " + finallyCounter + " times");
 
         }
+
+        logger.info("Total AAD Average: " + totalAadAverage.getAverage() + " Total RMSE Average: " + totalRmseAverage.getAverage());
+
+        printList(similarityStrategy + "-non-target-dataset-average-aad-by-increment", averageAadsByIncrementsList);
+        printList(similarityStrategy + "-non-target-dataset-time-context-average-rmse-by-increment", averageRmseByIncrementsList);
+
+        logger.info("Could not recommend in " + notAbleToRecommend + " cases.");
+        logger.info("Data coverage: " + (totalEstimatedPreferences / totalPreferences));
+
 
 
     }
 
+
+
     public void introduceNewRatings(DataModel dataModel,
                                     RecommenderBuilder builder,
+                                    String similarityStrategy,
                                     int incrementPreferencesBy,
                                     int maxPreferencesToUse) {
 
         logger.info("Using a maximum preferences of " + maxPreferencesToUse);
 
+        // calculate training and evaluation
+        int trainingPercentage = (int) (maxPreferencesToUse * 0.8);
+        int evaluationPercentage = (int) (maxPreferencesToUse * 0.2);
+
         // Keep average metrics for this pref
         RunningAverage totalAadAverage = new FullRunningAverage();
         RunningAverage totalRmseAverage = new FullRunningAverage();
 
-        // Keep a map of # of preferences and list of average metrics for drill down
-        // Key (Integer) represents increments of preferences while the value (FastMap<Long, RunningAverage>) represents a user's running average
+        // Keep list of average metrics per user represented by a string
         List<String> averageAadsByIncrementsList = new LinkedList<String>();
         List<String> averageRmseByIncrementsList = new LinkedList<String>();
 
-        //ResultSets
-        ResultSet usersRs = null;
 
         final Timer.Context context = newUserPreferences.time();
         // Get list of preferences for user userId
         try {
+
             // Retrieve list of users who have over 76 preferences after T0
             /*
              *  Generate the first data model by retrieving all preferences that occurred before
              *  T0 which is, in this case, 973018006
              */
 
-            FastByIDMap<PreferenceArray> dataBeforeTimeZero = getRatingsBeforeTimestamp(973018006, "AND user_id NOT IN (SELECT user_id FROM second_half_users) GROUP BY user_id");
+            List<Preference> preferencesBeforeTimeZero = getRatingsByTimestamp(973018006, '<', "AND user_id NOT IN (SELECT user_id FROM second_half_users) ORDER BY timestamp ASC");
+            logger.info("There are " + preferencesBeforeTimeZero.size() + " preferences before T0");
 
-            //dataBeforeTimeZero is now ready to be used to create the data model
-            DataModel modelBeforeTimeZero = new GenericDataModel(dataBeforeTimeZero);
+            FastByIDMap<PreferenceArray> dataBeforeTimeZero = listToFastByIDMap(preferencesBeforeTimeZero);
 
             // Now, introduce ratings from each user
-            //TODO usersRs = getSecondHalfUsers();
+            List<Long> users = getHalfOfUsers("second");
 
             double totalPreferences = 0.;
             double totalEstimatedPreferences = 0.;
             double notAbleToRecommend = 0.;
 
+            int userCount = 0;
             // For each user, introduce ratings in increments of incrementPreferencesBy ratings
-            while (usersRs.next()) {
-                long newUserId = usersRs.getLong("user_id");
+            for (Long newUserId : users) {
 
                 RunningAverage userAadAverage = new FullRunningAverage();
                 RunningAverage userRmseAverage = new FullRunningAverage();
 
-                logger.info("Introducing ratings for user " + newUserId);
+                logger.info("Introducing ratings for user " + newUserId + " who is user " + (++userCount));
+                //incrementalDataModel is now ready to be used to create the data model
+                DataModel incrementalDataModel = new GenericDataModel(dataBeforeTimeZero);
 
-                PreferenceArray allUsersPreferences = dataModel.getPreferencesFromUser(newUserId);
+                // Get user newUserId' preferences ordered by timestamp ASC
+                List<Preference> userPreferences = getUserPreferencesByTimestamp(newUserId);
 
-                //Increment total preference count for coverage
-                //totalPreferences += allUsersPreferences.length();
+                // Calculate the max number of preferences to evaluate for user
+                //double maxPreferencesForUser = (trainingPercentage > userPreferences.size()) ? userPreferences.size() * 0.8 : trainingPercentage;
+                int maxPreferencesForUser = trainingPercentage;
 
-                List<Preference> newUserPreferences = new LinkedList<Preference>();
-                for (int i = 0; i < allUsersPreferences.length(); i += incrementPreferencesBy) {
+                //logger.info("Max preferences to use for this user: " + trainingPercentage + " User Preferences Size: " + userPreferences.size());
+                logger.info("Introduce " + maxPreferencesForUser + " preferences from user " + newUserId);
 
-                    logger.info("Adding " + incrementPreferencesBy + " preferences for user " + newUserId);
-                    /*logger.info("i + incrementPrefencesBy: " + (i + incrementPreferencesBy));
-                    logger.info("allUsersPreferences.length: " + allUsersPreferences.length());*/
+                List<Preference> newPreferencesToIntroduce = new ArrayList(maxPreferencesForUser);
 
-                    // Add incrementPreferences # of new preferences to newUserPreferences
-                    // ceiling represents the current increment. E.g 5, 10, 15, 20 if incrementPreferences is 5
-                    logger.info("i + incrementPreferencesBy: " + (i + incrementPreferencesBy) + " All pref length: " + allUsersPreferences.length());
-                    // If we are still within the number of user's preferences
-                    int ceiling = calculatePreferenceCeiling(i, incrementPreferencesBy, allUsersPreferences.length(), maxPreferencesToUse);
-                    if (ceiling == 0) {
-                        break;
+                for (int i = incrementPreferencesBy; i <= maxPreferencesForUser; i += incrementPreferencesBy) {
+
+                    // Add incrementPreferencesBy preferences from dataBeforeTimeZero
+                    //logger.info("Add from " + (i - incrementPreferencesBy) + " to " + (i));
+
+                    for (int j = i - incrementPreferencesBy; j < i; j++) {
+                        newPreferencesToIntroduce.add(userPreferences.get(j));
                     }
-                    logger.info("Ceiling is " + ceiling);
-                    //logger.info("Adding " + ceiling + " preferences to user " + newUserId);
-                    for (int j = i; j < ceiling; j++) {
-                        Preference newUserPref = allUsersPreferences.get(j);
-                        newUserPreferences.add(new GenericPreference(newUserPref.getUserID(), newUserPref.getItemID(), newUserPref.getValue()));
-                    }
+                    logger.info("User " + newUserId + " now has " + newPreferencesToIntroduce.size() + " preferences as training data");
 
-                    // dataBeforeTimeZero now includes incrementPreference # more preferences for user newUserId
-                    dataBeforeTimeZero.put(newUserId, new GenericUserPreferenceArray(newUserPreferences));
-                    modelBeforeTimeZero = new GenericDataModel(dataBeforeTimeZero);
-                    //TODO modelBeforeTimeZero = addPreferencesToDatamodel( ,modelBeforeTimeZero)
-                    //logger.info("Data model size after adding " + modelBeforeTimeZero.getPreferencesFromUser(newUserId).length() + " preferences");
+                    // Add new preferences to incrementalDataModel
+                    incrementalDataModel = addPreferencesToDatamodel(listToFastByIDMap(newPreferencesToIntroduce), incrementalDataModel);
+                    //logger.info("Evaluate from " + (i + incrementPreferencesBy) + " to " + maxPreferencesForUser);
 
-                    // For every future recommendation, compute the evaluation metrics
-                    int preferencesToEvaluate = (allUsersPreferences.length() < maxPreferencesToUse) ? allUsersPreferences.length() : maxPreferencesToUse;
-
-                    logger.info("Evaluating from " + ceiling + " to " + preferencesToEvaluate);
-
-                    // Increment number of preferences that will have attempted to be evaluated
-                    //totalPreferences += preferencesToEvaluate;
-
-                    for (int k = ceiling; k <  preferencesToEvaluate; k++) {
+                    //Evaluate last 15 ratings
+                    //logger.info("Evaluate from " + (maxPreferencesForUser + 1) + " to " + (maxPreferencesForUser + evaluationPercentage + 1));
+                    for (int k = maxPreferencesForUser + 1; k < maxPreferencesForUser + evaluationPercentage; k++) {
                         totalPreferences++;
-                        Preference futurePref = allUsersPreferences.get(k);
-                        double diff = evaluateRecommenderForUser(builder, futurePref.getUserID(), futurePref.getItemID(), modelBeforeTimeZero, dataModel);
+                        Preference futurePref = userPreferences.get(k);
+                        double diff = evaluateRecommenderForUser(builder, futurePref.getUserID(), futurePref.getItemID(), incrementalDataModel, dataModel);
+
                         // Only count recommendations that were not NaN's or cases in which RS was unable to estimate preferences
                         if (!Double.isNaN(diff)) {
-                            //logger.info("Calculated difference: " + diff + " for " + newUserId);
+                            logger.info("Calculated difference: " + diff + " for " + newUserId + " on " + futurePref.getItemID());
                             userAadAverage.addDatum(Math.abs(diff));
                             userRmseAverage.addDatum(diff * diff);
+
+                            averageAadsByIncrementsList.add(i + "," + newUserId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+                            averageRmseByIncrementsList.add(i + "," + newUserId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+
                             //Increase # of estimated preferences for coverage
                             totalEstimatedPreferences++;
                         } else {
                             notAbleToRecommend++;
-                            logger.info("NaN diff for user " + newUserId + " after " + ceiling + " preferences");
+                            logger.info("NaN diff for user " + newUserId + " with item " + futurePref.getItemID() + " after " + i + " preferences");
                         }
 
                     }
+                    //logger.info("Current coverage: " + (totalEstimatedPreferences / totalPreferences));
 
-                    averageAadsByIncrementsList.add(ceiling + "," + newUserId + "," + userAadAverage.getAverage());
-                    averageRmseByIncrementsList.add(ceiling + "," + newUserId + "," + userRmseAverage.getAverage());
 
                 }
 
                 logger.info("User " + newUserId + " AAD Average: " + userAadAverage.getAverage() + " RMSE Average: " + userRmseAverage.getAverage());
-                totalAadAverage.addDatum(userAadAverage.getAverage());
-                totalRmseAverage.addDatum((userRmseAverage.getAverage()));
+
+                if (!Double.isNaN(userAadAverage.getAverage())) {
+                    totalAadAverage.addDatum(userAadAverage.getAverage());
+                } else {
+                    logger.info("Not adding user " + newUserId + " AAD averages because they are NaN");
+                }
+
+                if (!Double.isNaN(userRmseAverage.getAverage())) {
+                    totalRmseAverage.addDatum((userRmseAverage.getAverage()));
+                } else {
+                    logger.info("Not adding user " + newUserId + " RMSE averages because they are NaN");
+                }
             }
 
             logger.info("Total AAD Average: " + totalAadAverage.getAverage() + " Total RMSE Average: " + totalRmseAverage.getAverage());
 
-            printList("average-aad-by-preference", averageAadsByIncrementsList);
-            printList("average-rmse-by-preference", averageRmseByIncrementsList);
+            printList(similarityStrategy + "-average-aad-by-preference", averageAadsByIncrementsList);
+            printList(similarityStrategy + "-average-rmse-by-preference", averageRmseByIncrementsList);
+
             logger.info("Number of estimated predictions: " + totalEstimatedPreferences);
             logger.info("Not able to recommend: " + notAbleToRecommend);
             logger.info("Total number of predictions: " + totalPreferences);
             logger.info("Data coverage: " + (totalEstimatedPreferences / totalPreferences));
 
 
-        } catch (SQLException e) {
-            e.printStackTrace();
-            logger.error(e.getMessage());
-        } catch (TasteException e) {
-            e.printStackTrace();
-            logger.error(e.getMessage());
         } finally {
             context.stop();
-            org.apache.mahout.common.IOUtils.quietClose(usersRs, null, null);
         }
 
 
@@ -364,27 +372,26 @@ public class TimeBasedEvaluator {
 
     }
 
+
     /*
      * @param newPreferences a map containing preference arrays that have user id's and respective preferences for items
      * @param dataModel a data model into which the newPreferences will be added
      * add newPreferences to the dataModel
      */
+
+
     private DataModel addPreferencesToDatamodel(FastByIDMap<PreferenceArray> newPreferences, DataModel dataModel) {
 
         int preferencesAdded = 0;
 
         try {
             FastByIDMap<PreferenceArray> oldPreferences = GenericDataModel.toDataMap(dataModel);
-
             for (Map.Entry<Long, PreferenceArray> userPrefs : newPreferences.entrySet()) {
                 long userId = userPrefs.getKey();
                 PreferenceArray newUserPrefs = newPreferences.get(userId);
                 PreferenceArray oldUserPrefs = oldPreferences.get(userId);
                 // If a user's preferences are already in the old preferences, combine new prefs with old prefs
                 if (oldUserPrefs != null) {
-                    logger.info("oldUserPrefs not null so combining preferences");
-                    logger.info("newPreferences is size " + newUserPrefs.length());
-                    logger.info("oldPreferences is size " + oldUserPrefs.length());
 
                     List<Preference> combinedPrefList = new LinkedList<Preference>();
                     // Combine both old and new preferences into a list
@@ -403,12 +410,13 @@ public class TimeBasedEvaluator {
                 }
             }
 
+            //logger.info(preferencesAdded + " preferences were added to datamodel");
+
+
             return new GenericDataModel(oldPreferences);
 
         } catch (TasteException e) {
             logger.error(e.getMessage());
-        } finally {
-            logger.info(preferencesAdded + " preferences were added to the data model");
         }
 
         return null;
@@ -500,7 +508,36 @@ public class TimeBasedEvaluator {
      *
      * retrieve preferences that occurred before a timestamp
      */
-    private FastByIDMap<PreferenceArray> getRatingsBeforeTimestamp(long timestamp, String selectGroup) {
+
+    private FastByIDMap<PreferenceArray> listToFastByIDMap(List<Preference> preferences) {
+
+        return fastMapToFastByIdMap(listToFastMap(preferences));
+
+    }
+
+    private FastMap<Long, List<Preference>> listToFastMap(List<Preference> preferences) {
+
+        FastMap<Long, List<Preference>> userPreferences = new FastMap<Long, List<Preference>>();
+        //For each preference, add to a map containing users and respective preferences
+        for (Preference pref : preferences) {
+
+            long userId = pref.getUserID();
+
+            List<Preference> previousPreferences = userPreferences.get(userId); //= preferencesFromDb.get(dbUserId);
+            if (previousPreferences == null) {
+                previousPreferences = new LinkedList<Preference>();
+                userPreferences.put(userId, previousPreferences);
+            }
+
+            previousPreferences.add(pref);
+
+        }
+
+        return userPreferences;
+
+    }
+
+    private List<Preference> getRatingsByTimestamp(long timestamp, char comparison, String selectGroup) {
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
@@ -512,20 +549,42 @@ public class TimeBasedEvaluator {
         try {
 
             conn = MysqlDataSource.dataSource.getConnection();
-            stmt = conn.prepareStatement("SELECT user_id, movie_id, rating FROM movie_ratings WHERE timestamp < ? " + selectGroup + " ORDER BY timestamp ASC",
+            stmt = conn.prepareStatement("SELECT user_id, movie_id, rating FROM movie_ratings WHERE timestamp " + comparison + " ? " + selectGroup,
                     ResultSet.TYPE_FORWARD_ONLY,
                     ResultSet.CONCUR_READ_ONLY);
             stmt.setLong(1, timestamp);
             rs = stmt.executeQuery();
-            return fastMapToFastByIdMap(resultsToFastMap(rs));
+            return resultsToList(rs);
 
         } catch (SQLException e) {
             logger.error(e.getMessage());
         } finally {
-          org.apache.mahout.common.IOUtils.quietClose(rs, stmt, conn);
+            org.apache.mahout.common.IOUtils.quietClose(rs, stmt, conn);
         }
 
         return null;
+    }
+
+
+    private List<Preference> resultsToList(ResultSet rs) {
+        List<Preference> preferences = new ArrayList<Preference>();
+        try {
+
+            while (rs.next()) {
+                long userId = rs.getLong("user_id");
+                long itemId = rs.getLong("movie_id");
+                float rating = rs.getFloat("rating");
+
+                preferences.add(new GenericPreference(userId, itemId, rating));
+
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            logger.error(e.getMessage());
+        }
+
+        return preferences;
     }
 
     /*
@@ -533,14 +592,15 @@ public class TimeBasedEvaluator {
      * get all users who have rated at least 76 ratings (median amount) after half of all
      * ratings have been introduced to the data model
      */
-    private List<Long> getSecondHalfUsers() {
+    private List<Long> getHalfOfUsers(String half) {
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
 
+
         try {
             conn = MysqlDataSource.dataSource.getConnection();
-            stmt = conn.prepareStatement("SELECT user_id FROM second_half_users ORDER BY user_id ASC",
+            stmt = conn.prepareStatement("SELECT user_id FROM " + half + "_half_users ORDER BY user_id ASC",
                     ResultSet.TYPE_FORWARD_ONLY,
                     ResultSet.CONCUR_READ_ONLY);
             rs = stmt.executeQuery();
@@ -562,14 +622,11 @@ public class TimeBasedEvaluator {
 
     }
 
-    private int calculatePreferenceCeiling(int i, int incrementPreferencesBy, int allUsersPreferences, int maxPreferencesToUse) {
+    private int calculatePreferenceCeiling(int i, int incrementPreferencesBy, int maxPreferencesToUse) {
         int ceiling = 0;
-        if (i + incrementPreferencesBy < allUsersPreferences) {
+        if (i + incrementPreferencesBy < maxPreferencesToUse) {
             // Increment ceiling only if it is within max preferences to use
-            if (i + incrementPreferencesBy < maxPreferencesToUse) {
-                ceiling = i + incrementPreferencesBy;
-            }
-
+            ceiling = i + incrementPreferencesBy;
         }
         return ceiling;
 
@@ -598,9 +655,9 @@ public class TimeBasedEvaluator {
     private double evaluateRecommenderForUser(RecommenderBuilder builder, long userId, long itemId, DataModel dataModelWithoutUser, DataModel dataModelWithUser) {
 
         try {
-            logger.info("Evaluating future preference for user " + userId + " on item " + itemId);
-            logger.info("DataModel without preference is: " + dataModelWithoutUser.getNumUsers());
-            logger.info("DataModel with preference is: " + dataModelWithUser.getNumUsers());
+            //logger.info("Evaluating future preference for user " + userId + " on item " + itemId);
+            /*logger.info("DataModel without preference is: " + dataModelWithoutUser.getNumUsers());
+            logger.info("DataModel with preference is: " + dataModelWithUser.getNumUsers());*/
 
             Recommender recommender = builder.buildRecommender(dataModelWithoutUser);
             double estimatedPreference = recommender.estimatePreference(userId, itemId);
@@ -615,7 +672,8 @@ public class TimeBasedEvaluator {
             return diff;
 
         } catch (TasteException e) {
-            logger.error("Error: " + e.getMessage());
+            e.printStackTrace();
+            logger.error("Error: " + e.toString());
         }
         //logger.info("Reached end of evaluateRecommenderForuser; returning NaN");
 

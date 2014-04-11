@@ -10,6 +10,7 @@ import org.apache.mahout.cf.taste.eval.IRStatistics;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.eval.RecommenderEvaluator;
 import org.apache.mahout.cf.taste.eval.RecommenderIRStatsEvaluator;
+import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.eval.AverageAbsoluteDifferenceRecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.eval.GenericRecommenderIRStatsEvaluator;
@@ -21,11 +22,13 @@ import org.apache.mahout.cf.taste.impl.recommender.*;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
 import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
 import org.apache.mahout.cf.taste.model.DataModel;
+import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.neighborhood.UserNeighborhood;
 import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
 import org.apache.mahout.cf.taste.similarity.UserSimilarity;
+import org.apache.mahout.math.hadoop.similarity.cooccurrence.measures.LoglikelihoodSimilarity;
 
 import javax.sql.DataSource;
 import java.util.Random;
@@ -56,41 +59,52 @@ public class EvaluateRecommenders {
 
         try {
             //Reload from model does not include preferences when exporting from AbstractJDBCDataModel
-            /*DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(dataSource,
+            DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
                                                                                     "movie_ratings",
                                                                                     "user_id",
                                                                                     "movie_id",
                                                                                     "rating",
-                                                                                    "timestamp"));*/
+                                                                                    "timestamp"));
 
-            DataModel dataModel = new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
+            /*DataModel dataModel = new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
                     "movie_ratings",
                     "user_id",
                     "movie_id",
                     "rating",
-                    "timestamp");
+                    "timestamp");*/
 
-            PearsonCorrelationSimilarity pearsonCorrelationSimilarity = new PearsonCorrelationSimilarity(dataModel);
-            LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);
+            /*PearsonCorrelationSimilarity pearsonCorrelationSimilarity = new PearsonCorrelationSimilarity(dataModel);
+            LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);*/
 
             //Start evaluation
-            /*evaluateItemItemCF(pearsonCorrelationSimilarity, dataModel);
-            evaluateItemItemCF(logLikelihoodSimilarity, dataModel);
+            /*evaluateItemItemCF("pearson", dataModel);
+            evaluateItemItemCF("loglikelihood", dataModel);
 
-            evaluateUserUserCF(pearsonCorrelationSimilarity, dataModel);
-            evaluateUserUserCF(logLikelihoodSimilarity, dataModel);*/
+            evaluateUserUserCF("pearson", dataModel);*/
+            //evaluateUserUserCF("loglikelihood", dataModel);
 
             // Non-Personalized Recommenders
 
-            //evaluateItemAverageRecommender(dataModel);
-            //evaluateModifiedItemAverageRecommender(dataModel);
+            /*evaluateItemAverageRecommender(dataModel);
+            evaluateModifiedItemAverageRecommender(dataModel);*/
             /*evaluateItemUserAverageRecommender(dataModel);
             evaluateModifiedItemUserAverageRecommender(dataModel);*/
 
-            // Time Based Evaluation
 
-            evaluateTimeBased(pearsonCorrelationSimilarity, dataModel);
-            //evaluateIntroduceNewPreference(dataModel, pearsonCorrelationSimilarity);
+            /*evaluateUserCFNonTargetDatasetIncrements(dataModel, "pearson");
+            evaluateUserCFNonTargetDatasetIncrements(dataModel, "logLikelihood");
+
+            evaluateItemCFNonTargetDatasetIncrements(dataModel, "pearson");
+            evaluateItemCFNonTargetDatasetIncrements(dataModel, "logLikelihood");*/
+
+
+           //TODO
+           /*evaluateUserCFIntroduceNewPreferences(dataModel, "pearson");
+           evaluateUserCFIntroduceNewPreferences(dataModel, "loglikelihood");
+
+           evaluateItemCFIntroduceNewPreferences(dataModel, "pearson");
+           evaluateItemCFIntroduceNewPreferences(dataModel, "loglikelihood");*/
+
 
         } catch (TasteException e) {
             e.printStackTrace();
@@ -98,28 +112,119 @@ public class EvaluateRecommenders {
 
     }
 
-    public void evaluateIntroduceNewPreference(DataModel dataModel, final ItemSimilarity similarityStrategy) {
-        // System.out.println("user_id,item_id,aad,rmse,pref_count");
-        logger.info("Evaluating introducing new preferences using " + similarityStrategy.getClass());
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
-        //Ensures random testing results every test
-        org.apache.mahout.common.RandomUtils.useTestSeed();
-
+    public RecommenderBuilder getUserCfRsBuilder(final int neighborhoodSize, final String similarityStrategy) {
         RecommenderBuilder builder = new RecommenderBuilder() {
+
             public Recommender buildRecommender(DataModel model) {
                 // build and return the Recommender to evaluate here
                 Recommender recommender = null;
+                UserSimilarity us = null;
                 try {
-                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, similarityStrategy));
+
+                    if (similarityStrategy.equals("pearson")) {
+                        us = new PearsonCorrelationSimilarity(model);
+                    } else if (similarityStrategy.equals("loglikelihood")) {
+                        us = new LogLikelihoodSimilarity(model);
+                    } else {
+                        throw new Exception("You must choose either Pearson Correlation or Log Likelihood");
+                    }
+
+                    UserNeighborhood neighborhood = new NearestNUserNeighborhood(neighborhoodSize, us, model);
+                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, us));
                 } catch (TasteException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
                 return recommender;
             }
+
         };
 
-        timeBasedEvaluator.introduceNewRatings(dataModel, builder, 10, 76);
+        return builder;
+    }
 
+    public RecommenderBuilder getItemCfRsBuilder(final String similarityStrategy) {
+        RecommenderBuilder builder = new RecommenderBuilder() {
+
+            public Recommender buildRecommender(DataModel model) {
+                // build and return the Recommender to evaluate here
+                Recommender recommender = null;
+                ItemSimilarity is = null;
+
+                try {
+
+                    if (similarityStrategy.equals("pearson")) {
+                        is = new PearsonCorrelationSimilarity(model);
+                    } else if (similarityStrategy.equals("loglikelihood")) {
+                        is = new LogLikelihoodSimilarity(model);
+                    } else {
+                        throw new Exception("You must choose either Pearson Correlation or Log Likelihood");
+                    }
+
+                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, is));
+                } catch (TasteException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return recommender;
+            }
+
+        };
+
+        return builder;
+    }
+
+
+
+    public void evaluateUserCFNonTargetDatasetIncrements(DataModel dataModel, String similarityStrategy) {
+        logger.info("Evaluating User-User CF Introducing Non-Target Data in Increments with " + similarityStrategy.toString());
+
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        timeBasedEvaluator.introduceNonTargetDataIncrements(dataModel,
+                                                            getUserCfRsBuilder(10,similarityStrategy),
+                                                            similarityStrategy.toString(),
+                                                            10000);
+
+    }
+
+    public void evaluateItemCFNonTargetDatasetIncrements(DataModel dataModel, String similarityStrategy) {
+        logger.info("Evaluating ItemItem CF Introducing Non-Target Data in Increments with " + similarityStrategy);
+
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        timeBasedEvaluator.introduceNonTargetDataIncrements(dataModel,
+                                                            getItemCfRsBuilder(similarityStrategy),
+                                                            similarityStrategy.toString(),
+                                                            10000);
+
+    }
+    public void evaluateUserCFIntroduceNewPreferences(DataModel dataModel, String similarityStrategy) {
+
+        logger.info("Evaluating User-User CF introducing new preferences using " + similarityStrategy);
+
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        timeBasedEvaluator.introduceNewRatings(dataModel, getUserCfRsBuilder(10, similarityStrategy), similarityStrategy + "-user-user", 10, 76);
+
+    }
+
+    public void evaluateItemCFIntroduceNewPreferences(DataModel dataModel, String similarityStrategy) {
+        logger.info("Evaluating Item-Item CF introducing new preferences using " + similarityStrategy);
+
+        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        //Ensures random testing results every test
+        org.apache.mahout.common.RandomUtils.useTestSeed();
+
+        timeBasedEvaluator.introduceNewRatings(dataModel, getItemCfRsBuilder(similarityStrategy), similarityStrategy + "-item-item", 10, 76);
 
     }
 
@@ -272,59 +377,15 @@ public class EvaluateRecommenders {
         //calculateRecallPrecision(builder, dataModel);
     }
 
-    private void evaluateTimeBased(final UserSimilarity similarityStrategy, DataModel dataModel) {
+    public void evaluateItemItemCF(String similarityStrategy, DataModel dataModel) {
 
-        logger.info("Calculating time based evaluation with similarity strategy: " + similarityStrategy.getClass());
-
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
-
-        //Ensures random testing results every test
-        org.apache.mahout.common.RandomUtils.useTestSeed();
-
-        RecommenderBuilder builder = new RecommenderBuilder() {
-            public Recommender buildRecommender(DataModel model) {
-                // build and return the Recommender to evaluate here
-                Recommender recommender = null;
-
-                try {
-                    UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
-                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, similarityStrategy));
-
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                return recommender;
-
-            }
-        };
-
-        timeBasedEvaluator.evaluateTimeContext(dataModel, builder, 10, 20);
-
-    }
-
-    public void evaluateItemItemCF(final ItemSimilarity similarityStrategy, DataModel dataModel) {
-
-        System.out.println("Item-Item CF with " + similarityStrategy.getClass() + "\n");
-        logger.info("Item-Item CF with " + similarityStrategy.getClass());
+        System.out.println("Item-Item CF with " + similarityStrategy + "\n");
+        logger.info("Item-Item CF with " + similarityStrategy);
 
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        RecommenderBuilder builder = new RecommenderBuilder() {
-            public Recommender buildRecommender(DataModel model) {
-                // build and return the Recommender to evaluate here
-                Recommender recommender = null;
-                try {
-                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, similarityStrategy));
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                }
-                return recommender;
-            }
-        };
+        RecommenderBuilder builder = getItemCfRsBuilder(similarityStrategy);
 
         calculateAverageAbsoluteDifference(builder, dataModel);
         calculateRmse(builder, dataModel);
@@ -332,33 +393,15 @@ public class EvaluateRecommenders {
 
     }
 
-    public void evaluateUserUserCF(final UserSimilarity similarityStrategy, DataModel dataModel) {
+    public void evaluateUserUserCF(String similarityStrategy, DataModel dataModel) {
 
-        System.out.println("User-User CF with " + similarityStrategy.getClass() + "\n");
-        logger.info("User-User CF with " + similarityStrategy.getClass());
+        System.out.println("User-User CF with " + similarityStrategy + "\n");
+        logger.info("User-User CF with " + similarityStrategy);
 
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        RecommenderBuilder builder = new RecommenderBuilder() {
-            public Recommender buildRecommender(DataModel model) {
-                // build and return the Recommender to evaluate here
-                Recommender recommender = null;
-
-                try {
-                    UserNeighborhood neighborhood = new NearestNUserNeighborhood(25, similarityStrategy, model);
-                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, similarityStrategy));
-
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-
-                return recommender;
-
-            }
-        };
+        RecommenderBuilder builder = getUserCfRsBuilder(25, similarityStrategy);
 
         calculateAverageAbsoluteDifference(builder, dataModel);
         calculateRmse(builder, dataModel);
