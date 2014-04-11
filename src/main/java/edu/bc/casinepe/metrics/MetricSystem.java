@@ -4,6 +4,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Slf4jReporter;
 
 import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
@@ -13,9 +14,10 @@ import java.util.concurrent.TimeUnit;
  */
 public class MetricSystem {
 
-    private static org.apache.logging.log4j.Logger logger = LogManager.getLogger(MetricSystem.class.getName());
-    private static boolean started = false;
+    private static Logger logger = LogManager.getLogger(MetricSystem.class.getName());
     public static final MetricRegistry metrics = new MetricRegistry();
+
+    private static boolean started = false;
 
     private static final Slf4jReporter reporter = Slf4jReporter.forRegistry(metrics)
             .outputTo(LoggerFactory.getLogger(MetricSystem.class))
@@ -23,10 +25,11 @@ public class MetricSystem {
             .convertDurationsTo(TimeUnit.MILLISECONDS)
             .build();
 
+    private MetricSystem() {}
 
     public static void start() {
         if (!started) {
-            reporter.start(1, TimeUnit.SECONDS);
+            reporter.start(5, TimeUnit.SECONDS);
             started = true;
             logger.info("MetricSystem has been started.");
         }
