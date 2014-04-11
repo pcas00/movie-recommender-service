@@ -1,6 +1,7 @@
 package edu.bc.casinepe.resources;
 
 import edu.bc.casinepe.api.MovieBean;
+import edu.bc.casinepe.api.Rating;
 import edu.bc.casinepe.jdbc.MovieDAO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -47,6 +48,13 @@ public class MovieResource {
     public MovieBean putMovie(MovieBean movie) {
 
        return movieDAO.editMovie(movie);
+    }
+
+    @PUT
+    @Path("/{movieId}/rating")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MovieBean putMovieRating(Rating rating) {
+        return movieDAO.putRating(rating);
     }
 
 

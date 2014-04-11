@@ -1,6 +1,7 @@
 package edu.bc.casinepe.jdbc;
 
 import com.codahale.metrics.Timer;
+import edu.bc.casinepe.api.Rating;
 import edu.bc.casinepe.metrics.MetricSystem;
 import edu.bc.casinepe.api.MovieBean;
 import org.apache.logging.log4j.LogManager;
@@ -111,5 +112,49 @@ public class MovieDAO {
         }
 
         return new MovieBean();
+    }
+
+    public MovieBean putRating(Rating rating) {
+
+        Connection conn = null;
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = MysqlDataSource.getDataSource().getConnection();
+            stmt = conn.prepareStatement("SELECT * FROM movie_ratings WHERE user_id = ? AND movie_id = ? LIMIT 1");
+            rs = stmt.executeQuery();
+
+            // If there was already a rating for the given user and item, update it
+            if (rs.next()) {
+                stmt.close();
+                stmt = conn.prepareStatement("UPDATE movie_ratings SET rating = ? WHERE user_id = ? AND movie_id = ? LIMIT 1");
+                stmt.setFloat(1, rating.getRatingVal());
+                stmt.setLong(2, rating.getUserId());
+                stmt.setLong(3, rating.getMovieId());
+
+            // No previous rating, add new one
+            } else {
+                stmt.close();
+                stmt = conn.prepareStatement("INSERT INTO movie_ratings SET user_id = ? , movie_id = ? , rating = ?");
+                stmt.setLong(1, rating.getUserId());
+                stmt.setLong(2, rating.getMovieId());
+                stmt.setFloat(3, rating.getRatingVal());
+            }
+
+            rs.close();
+            rs = stmt.executeQuery();
+
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        //TODO Quietly close stmt, conn, rs
+
+        } finally {
+
+        }
+
+        return new MovieBean();
+
     }
 }
