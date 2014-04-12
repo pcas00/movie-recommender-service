@@ -1,13 +1,10 @@
 package edu.bc.casinepe.eval;
 
 import com.codahale.metrics.Timer;
-import com.google.common.collect.Lists;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.search.similarities.Similarity;
-import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.impl.common.*;
@@ -18,7 +15,6 @@ import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.recommender.Recommender;
-import org.apache.mahout.common.RandomUtils;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -92,11 +88,16 @@ public class TimeBasedEvaluator {
         //Add 1000 ratings before T0 that do not include second half users to an incremental data model
 
         // For all ratings that occurred before T0 and do not include any user from userIds
-        for (int i = incrementPreferencesBy; i < dataBeforeTimeZero.size(); i += incrementPreferencesBy) {
+        logger.info("Data size is " + dataBeforeTimeZero.size());
+        for (int i = incrementPreferencesBy; i < dataBeforeTimeZero.size() - 1; i += incrementPreferencesBy) {
 
             // Add incrementPreferencesBy preferences from dataBeforeTimeZero
             List<Preference> newPreferencesToIntroduce = new ArrayList(incrementPreferencesBy);
-            for (int j = i - incrementPreferencesBy; j < i + incrementPreferencesBy; j++) {
+
+            int ceiling = (dataBeforeTimeZero.size() < i + incrementPreferencesBy) ? dataBeforeTimeZero.size() : i + incrementPreferencesBy;
+            logger.info("j is " + (i - incrementPreferencesBy) + " and j must be < " + ceiling);
+
+            for (int j = i - incrementPreferencesBy; j < ceiling; j++) {
                 newPreferencesToIntroduce.add(dataBeforeTimeZero.get(j));
             }
             logger.info(newPreferencesToIntroduce.size() + " have been introduced for all users");
@@ -127,9 +128,6 @@ public class TimeBasedEvaluator {
                         userAadAverage.addDatum(Math.abs(diff));
                         userRmseAverage.addDatum(diff * diff);
 
-                        averageAadsByIncrementsList.add(i + "," + userId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
-                        averageRmseByIncrementsList.add(i + "," + userId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
-
                         //Increase # of estimated preferences for coverage
                         totalEstimatedPreferences++;
 
@@ -140,16 +138,16 @@ public class TimeBasedEvaluator {
 
                 }
 
-                // Add averages to list for increments if they are not NaN
 
+                // Add averages to list for increments if they are not NaN
                 if (!Double.isNaN(userAadAverage.getAverage())) {
-                    averageAadsByIncrementsList.add(i + "," + userId + "," + userAadAverage.getAverage());
                     // Add averages to total averages
+                    averageAadsByIncrementsList.add(i + "," + userId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
                     totalAadAverage.addDatum(userAadAverage.getAverage());
                 }
 
                 if (!Double.isNaN(userRmseAverage.getAverage())) {
-                    averageRmseByIncrementsList.add(i + "," + userId + "," + userRmseAverage.getAverage());
+                    averageRmseByIncrementsList.add(i + "," + userId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
                     totalRmseAverage.addDatum((userRmseAverage.getAverage()));
                 }
 
@@ -166,7 +164,7 @@ public class TimeBasedEvaluator {
         logger.info("Total AAD Average: " + totalAadAverage.getAverage() + " Total RMSE Average: " + totalRmseAverage.getAverage());
 
         printList(similarityStrategy + "-non-target-dataset-average-aad-by-increment", averageAadsByIncrementsList);
-        printList(similarityStrategy + "-non-target-dataset-time-context-average-rmse-by-increment", averageRmseByIncrementsList);
+        printList(similarityStrategy + "-non-target-dataset-average-rmse-by-increment", averageRmseByIncrementsList);
 
         logger.info("Could not recommend in " + notAbleToRecommend + " cases.");
         logger.info("Data coverage: " + (totalEstimatedPreferences / totalPreferences));
@@ -270,9 +268,6 @@ public class TimeBasedEvaluator {
                             userAadAverage.addDatum(Math.abs(diff));
                             userRmseAverage.addDatum(diff * diff);
 
-                            averageAadsByIncrementsList.add(i + "," + newUserId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
-                            averageRmseByIncrementsList.add(i + "," + newUserId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
-
                             //Increase # of estimated preferences for coverage
                             totalEstimatedPreferences++;
                         } else {
@@ -282,6 +277,16 @@ public class TimeBasedEvaluator {
 
                     }
                     //logger.info("Current coverage: " + (totalEstimatedPreferences / totalPreferences));
+
+
+                    // Add an average value for each user after each increment
+                    if (!Double.isNaN(userAadAverage.getAverage())) {
+                        averageAadsByIncrementsList.add(i + "," + newUserId + "," + userAadAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+                    }
+
+                    if (!Double.isNaN(userRmseAverage.getAverage())) {
+                        averageRmseByIncrementsList.add(i + "," + newUserId + "," + userRmseAverage.getAverage() + "," + (totalEstimatedPreferences / totalPreferences));
+                    }
 
 
                 }
@@ -674,6 +679,9 @@ public class TimeBasedEvaluator {
         } catch (TasteException e) {
             e.printStackTrace();
             logger.error("Error: " + e.toString());
+        } catch (Exception e) {
+            logger.error(e.getStackTrace());
+            return Double.NaN;
         }
         //logger.info("Reached end of evaluateRecommenderForuser; returning NaN");
 

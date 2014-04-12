@@ -1,6 +1,8 @@
 package edu.bc.casinepe.eval;
 
 import com.codahale.metrics.Timer;
+import edu.bc.casinepe.core.ConfidenceItemAverageRecommender;
+import edu.bc.casinepe.core.ConfidenceItemUserAverageRecommender;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
@@ -10,8 +12,6 @@ import org.apache.mahout.cf.taste.eval.IRStatistics;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.eval.RecommenderEvaluator;
 import org.apache.mahout.cf.taste.eval.RecommenderIRStatsEvaluator;
-import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
-import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.eval.AverageAbsoluteDifferenceRecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.eval.GenericRecommenderIRStatsEvaluator;
 import org.apache.mahout.cf.taste.impl.eval.RMSRecommenderEvaluator;
@@ -22,16 +22,12 @@ import org.apache.mahout.cf.taste.impl.recommender.*;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
 import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
 import org.apache.mahout.cf.taste.model.DataModel;
-import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.neighborhood.UserNeighborhood;
 import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
 import org.apache.mahout.cf.taste.similarity.UserSimilarity;
-import org.apache.mahout.math.hadoop.similarity.cooccurrence.measures.LoglikelihoodSimilarity;
 
-import javax.sql.DataSource;
-import java.util.Random;
 
 import static com.codahale.metrics.MetricRegistry.name;
 
@@ -41,7 +37,8 @@ public class EvaluateRecommenders {
 
     private double trainingPercentage;
     private double evaluationPercentage;
-    private double pessimisticValue;
+    public static double pessimisticValue;
+
 
     public EvaluateRecommenders(String[] args) {
 
@@ -87,15 +84,16 @@ public class EvaluateRecommenders {
 
             /*evaluateItemAverageRecommender(dataModel);
             evaluateModifiedItemAverageRecommender(dataModel);*/
+
             /*evaluateItemUserAverageRecommender(dataModel);
-            evaluateModifiedItemUserAverageRecommender(dataModel);*/
+            evaluateModifiedItemUserAverageRecommender(dataModel); */
 
 
             /*evaluateUserCFNonTargetDatasetIncrements(dataModel, "pearson");
-            evaluateUserCFNonTargetDatasetIncrements(dataModel, "logLikelihood");
+            evaluateUserCFNonTargetDatasetIncrements(dataModel, "loglikelihood");*/
 
             evaluateItemCFNonTargetDatasetIncrements(dataModel, "pearson");
-            evaluateItemCFNonTargetDatasetIncrements(dataModel, "logLikelihood");*/
+            evaluateItemCFNonTargetDatasetIncrements(dataModel, "loglikelihood");
 
 
            //TODO
@@ -130,7 +128,7 @@ public class EvaluateRecommenders {
                     }
 
                     UserNeighborhood neighborhood = new NearestNUserNeighborhood(neighborhoodSize, us, model);
-                    recommender = new CachingRecommender(new GenericUserBasedRecommender(model, neighborhood, us));
+                    recommender = new GenericUserBasedRecommender(model, neighborhood, us);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 } catch (Exception e) {
@@ -162,7 +160,7 @@ public class EvaluateRecommenders {
                         throw new Exception("You must choose either Pearson Correlation or Log Likelihood");
                     }
 
-                    recommender = new CachingRecommender(new GenericItemBasedRecommender(model, is));
+                    recommender = new GenericItemBasedRecommender(model, is);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 } catch (Exception e) {
@@ -186,9 +184,9 @@ public class EvaluateRecommenders {
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
         timeBasedEvaluator.introduceNonTargetDataIncrements(dataModel,
-                                                            getUserCfRsBuilder(10,similarityStrategy),
-                                                            similarityStrategy.toString(),
-                                                            10000);
+                                                            getUserCfRsBuilder(25,similarityStrategy),
+                                                            similarityStrategy + "-user-user",
+                                                            100000);
 
     }
 
@@ -201,8 +199,8 @@ public class EvaluateRecommenders {
 
         timeBasedEvaluator.introduceNonTargetDataIncrements(dataModel,
                                                             getItemCfRsBuilder(similarityStrategy),
-                                                            similarityStrategy.toString(),
-                                                            10000);
+                                                            similarityStrategy + "-item-item",
+                                                            100000);
 
     }
     public void evaluateUserCFIntroduceNewPreferences(DataModel dataModel, String similarityStrategy) {
@@ -213,7 +211,7 @@ public class EvaluateRecommenders {
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
-        timeBasedEvaluator.introduceNewRatings(dataModel, getUserCfRsBuilder(10, similarityStrategy), similarityStrategy + "-user-user", 10, 76);
+        timeBasedEvaluator.introduceNewRatings(dataModel, getUserCfRsBuilder(25, similarityStrategy), similarityStrategy + "-user-user", 10, 76);
 
     }
 
@@ -240,7 +238,7 @@ public class EvaluateRecommenders {
                 // build and return the Recommender to evaluate here
                 Recommender recommender = null;
                 try {
-                    recommender = new CachingRecommender(new ItemAverageRecommender(model));
+                    recommender = new ItemAverageRecommender(model);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 }
@@ -267,7 +265,7 @@ public class EvaluateRecommenders {
                     // build and return the Recommender to evaluate here
                     Recommender recommender = null;
                     try {
-                        recommender = new CachingRecommender(new ItemAverageRecommender(model));
+                        recommender = new ConfidenceItemAverageRecommender(model);
                     } catch (TasteException e) {
                         e.printStackTrace();
                     }
@@ -275,29 +273,10 @@ public class EvaluateRecommenders {
                 }
             };
 
-            IDRescorer customIdRescorer = new IDRescorer() {
-                @Override
-                public double rescore(long id, double originalScore) {
-                    double newScore = originalScore;
-                    try {
-                        int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
-                        newScore = originalScore - pessimisticValue / Math.sqrt(numberOfRatings);
-                    } catch (TasteException e) {
-                        e.printStackTrace();
-                    } finally {
-                        return newScore;
-                    }
-                }
-
-                @Override
-                public boolean isFiltered(long id) {
-                    return false;
-                }
-            };
 
             //calculateAverageAbsoluteDifference(builder, dataModel);
             //calculateRmse(builder, dataModel);
-            calculateRecallPrecision(builder, dataModel, customIdRescorer);
+            calculateRecallPrecision(builder, dataModel, null);
 
         } finally {
             context.stop();
@@ -317,7 +296,7 @@ public class EvaluateRecommenders {
                 // build and return the Recommender to evaluate here
                 Recommender recommender = null;
                 try {
-                    recommender = new CachingRecommender(new ItemUserAverageRecommender(model));
+                    recommender = new ItemUserAverageRecommender(model);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 }
@@ -342,7 +321,7 @@ public class EvaluateRecommenders {
                 // build and return the Recommender to evaluate here
                 Recommender recommender = null;
                 try {
-                    recommender = new CachingRecommender(new ItemUserAverageRecommender(model));
+                    recommender = new ConfidenceItemUserAverageRecommender(model);
                 } catch (TasteException e) {
                     e.printStackTrace();
                 }
@@ -351,29 +330,9 @@ public class EvaluateRecommenders {
 
         };
 
-        IDRescorer customIdRescorer = new IDRescorer() {
-            @Override
-            public double rescore(long id, double originalScore) {
-                double newScore = originalScore;
-                try {
-                    int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
-                    newScore = originalScore - pessimisticValue / Math.sqrt(numberOfRatings);
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } finally {
-                    return newScore;
-                }
-            }
-
-            @Override
-            public boolean isFiltered(long id) {
-                return false;
-            }
-        };
-
         //calculateAverageAbsoluteDifference(builder, dataModel);
         //calculateRmse(builder, dataModel);
-        calculateRecallPrecision(builder, dataModel, customIdRescorer);
+        calculateRecallPrecision(builder, dataModel, null);
         //calculateRecallPrecision(builder, dataModel);
     }
 
