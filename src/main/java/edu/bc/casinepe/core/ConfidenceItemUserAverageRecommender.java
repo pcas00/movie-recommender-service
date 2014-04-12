@@ -6,6 +6,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import edu.bc.casinepe.eval.EvaluateRecommenders;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.Refreshable;
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -16,6 +17,7 @@ import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.common.RefreshHelper;
 import org.apache.mahout.cf.taste.impl.common.RunningAverage;
 import org.apache.mahout.cf.taste.impl.recommender.AbstractRecommender;
+import org.apache.mahout.cf.taste.impl.recommender.ItemUserAverageRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.TopItems;
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
@@ -38,8 +40,6 @@ public class ConfidenceItemUserAverageRecommender extends AbstractRecommender {
     private final RunningAverage overallAveragePrefValue;
     private final ReadWriteLock buildAveragesLock;
     private final RefreshHelper refreshHelper;
-
-    public static final double RESCORE_CONSTANT_VALUE = 2;
 
     public ConfidenceItemUserAverageRecommender(DataModel dataModel) throws TasteException {
         super(dataModel);
@@ -69,31 +69,7 @@ public class ConfidenceItemUserAverageRecommender extends AbstractRecommender {
 
         TopItems.Estimator<Long> estimator = new Estimator(userID);
 
-
-        IDRescorer customIdRescorer = new IDRescorer() {
-            @Override
-            public double rescore(long id, double originalScore) {
-                double newScore = originalScore;
-                try {
-                    int numberOfRatings = getDataModel().getNumUsersWithPreferenceFor(id);
-                    newScore = originalScore - RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } finally {
-                    return newScore;
-                }
-            }
-
-            @Override
-            public boolean isFiltered(long id) {
-                return false;
-            }
-        };
-
-        MultipleIDRescorer multipleIDRescorer = new MultipleIDRescorer(rescorer);
-        multipleIDRescorer.addIdRescorer(customIdRescorer);
-
-        List<RecommendedItem> topItems = TopItems.getTopItems(howMany, possibleItemIDs.iterator(), multipleIDRescorer,
+        List<RecommendedItem> topItems = TopItems.getTopItems(howMany, possibleItemIDs.iterator(), rescorer,
                 estimator);
 
         logger.debug("Recommendations are: {}", topItems);
@@ -125,7 +101,7 @@ public class ConfidenceItemUserAverageRecommender extends AbstractRecommender {
             double userDiff = userAverage.getAverage() - overallAveragePrefValue.getAverage();
 
             int numberOfRatings = getDataModel().getNumUsersWithPreferenceFor(itemID);
-            double confidenceDiff = (itemAverage.getAverage() + userDiff) - RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
+            double confidenceDiff = (itemAverage.getAverage() + userDiff) - EvaluateRecommenders.pessimisticValue / Math.sqrt(numberOfRatings);
             logger.info("Estimate preference for ConfidenceItemUserAverageRecommender: would have been " + itemAverage.getAverage() +
                     " but is " + confidenceDiff);
             return (float) (confidenceDiff);

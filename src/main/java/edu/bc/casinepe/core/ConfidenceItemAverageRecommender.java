@@ -1,6 +1,7 @@
 package edu.bc.casinepe.core;
 
 import com.google.common.base.Preconditions;
+import edu.bc.casinepe.eval.EvaluateRecommenders;
 import org.apache.logging.log4j.LogManager;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.Refreshable;
@@ -55,30 +56,7 @@ public class ConfidenceItemAverageRecommender extends AbstractRecommender {
 
         TopItems.Estimator<Long> estimator = new Estimator();
 
-        IDRescorer customIdRescorer = new IDRescorer() {
-            @Override
-            public double rescore(long id, double originalScore) {
-                double newScore = originalScore;
-                try {
-                    int numberOfRatings = getDataModel().getNumUsersWithPreferenceFor(id);
-                    newScore = originalScore - ConfidenceItemUserAverageRecommender.RESCORE_CONSTANT_VALUE / Math.sqrt(numberOfRatings);
-                } catch (TasteException e) {
-                    e.printStackTrace();
-                } finally {
-                    return newScore;
-                }
-            }
-
-            @Override
-            public boolean isFiltered(long id) {
-                return false;
-            }
-        };
-
-        MultipleIDRescorer multipleIDRescorer = new MultipleIDRescorer(rescorer);
-        multipleIDRescorer.addIdRescorer(customIdRescorer);
-
-        List<RecommendedItem> topItems = TopItems.getTopItems(howMany, possibleItemIDs.iterator(), multipleIDRescorer,
+        List<RecommendedItem> topItems = TopItems.getTopItems(howMany, possibleItemIDs.iterator(), rescorer,
                 estimator);
 
         logger.debug("Recommendations are: {}", topItems);
@@ -103,7 +81,7 @@ public class ConfidenceItemAverageRecommender extends AbstractRecommender {
 
             return average == null ? Float.NaN
                                    : (float) (average.getAverage() -
-                                              ConfidenceItemUserAverageRecommender.RESCORE_CONSTANT_VALUE
+                                              EvaluateRecommenders.pessimisticValue
                                               / Math.sqrt(numberOfRatings));
         } catch (TasteException e) {
             logger.error(e.getMessage());
