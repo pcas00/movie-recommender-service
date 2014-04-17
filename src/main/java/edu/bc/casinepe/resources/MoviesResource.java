@@ -5,22 +5,31 @@ import edu.bc.casinepe.api.MovieBean;
 import edu.bc.casinepe.api.MoviesBean;
 import edu.bc.casinepe.core.FileRatings;
 import edu.bc.casinepe.core.VectorOperations;
+import edu.bc.casinepe.jdbc.JDBCDataModel;
 import edu.bc.casinepe.jdbc.MovieDAO;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
+import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.impl.model.jdbc.AbstractJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
+import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood;
+import org.apache.mahout.cf.taste.impl.recommender.CachingRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.GenericItemBasedRecommender;
+import org.apache.mahout.cf.taste.impl.recommender.GenericUserBasedRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.ItemAverageRecommender;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
+import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
+import org.apache.mahout.cf.taste.model.DataModel;
+import org.apache.mahout.cf.taste.neighborhood.UserNeighborhood;
 import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
+import org.apache.mahout.cf.taste.similarity.UserSimilarity;
 
 
 import javax.sql.DataSource;
@@ -36,7 +45,7 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movies")
 public class MoviesResource {
-    private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
+    private static Logger logger = LogManager.getLogger(MoviesResource.class);
     private final Timer fileResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "fileResponses"));
     private final Timer getMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getMoviesFromDb"));
     private final Timer getSimilarMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getSimilarMoviesFromDb"));
@@ -46,10 +55,10 @@ public class MoviesResource {
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMovies() {
         final Timer.Context context = fileResponses.time();
-
+        logger.info("Get movies from file");
         try {
             MoviesBean movies = new MoviesBean();
-            Map<Integer, List<Double>> movieRatings = FileRatings.parseMovieRatings("/mahoutRatings.dat");
+            Map<Integer, List<Double>> movieRatings = FileRatings.parseMovieRatings("mahoutRatings.dat");
 
             Map<Integer, List<Double>> top5Movies =  VectorOperations.topNFromMap(5, movieRatings);
             for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
@@ -236,22 +245,16 @@ public class MoviesResource {
 
         MoviesBean recommendedMovies = new MoviesBean();
 
-        DataSource dataSource = MysqlDataSource.getDataSource();
+        //DataSource dataSource = MysqlDataSource.getDataSource();
 
-        final AbstractJDBCDataModel dataModel = new MySQLJDBCDataModel(dataSource,
-                "movie_ratings",
-                "user_id",
-                "movie_id",
-                "rating",
-                "timestamp");
+        final DataModel dataModel = JDBCDataModel.getDataModel();
 
         Recommender recommender = null;
         //Recommender cachingRecommender = null;
 
         try {
-
-            //DiffStorage diffStorage = new MemoryDiffStorage(dataModel, Weighting.UNWEIGHTED, Long.MAX_VALUE);
-            //recommender = new CachingRecommender(new SlopeOneRecommender(dataModel, Weighting.UNWEIGHTED, Weighting.UNWEIGHTED, diffStorage));
+            ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
+            recommender = new CachingRecommender(new GenericItemBasedRecommender(dataModel, itemSimilarity));
             List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
             MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendations) {
