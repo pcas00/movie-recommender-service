@@ -3,8 +3,9 @@ package edu.bc.casinepe.resources;
 import edu.bc.casinepe.api.MovieBean;
 import edu.bc.casinepe.api.Rating;
 import edu.bc.casinepe.jdbc.MovieDAO;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
@@ -16,7 +17,7 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movie")
 public class MovieResource {
-    private static Logger logger = LogManager.getLogger(MoviesResource.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(MoviesResource.class.getName());
     private MovieDAO movieDAO = new MovieDAO();
 
     @GET

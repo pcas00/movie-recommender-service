@@ -2,7 +2,6 @@ package edu.bc.casinepe.core;
 
 import com.google.common.base.Preconditions;
 import edu.bc.casinepe.eval.EvaluateRecommenders;
-import org.apache.logging.log4j.LogManager;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.Refreshable;
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -13,6 +12,8 @@ import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.List;
@@ -25,7 +26,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class ConfidenceItemAverageRecommender extends AbstractRecommender {
 
-    private static org.apache.logging.log4j.Logger logger = LogManager.getLogger(ConfidenceItemAverageRecommender.class);
+    private static Logger logger = LoggerFactory.getLogger(ConfidenceItemAverageRecommender.class);
 
     private final FastByIDMap<RunningAverage> itemAverages;
     private final ReadWriteLock buildAveragesLock;

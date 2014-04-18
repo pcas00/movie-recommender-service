@@ -3,8 +3,6 @@ package edu.bc.casinepe.eval;
 import com.codahale.metrics.Timer;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.impl.common.*;
@@ -15,6 +13,8 @@ import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.recommender.Recommender;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -30,7 +30,7 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 public class TimeBasedEvaluator {
 
-    private static Logger logger = LogManager.getLogger(TimeBasedEvaluator.class);
+    private static Logger logger = LoggerFactory.getLogger(TimeBasedEvaluator.class);
     private final Timer newUserPreferences = MetricSystem.metrics.timer(name(TimeBasedEvaluator.class, "newUserPreferences"));
 
     public void introduceNewRatings(DataModel dataModel,
@@ -532,7 +532,7 @@ public class TimeBasedEvaluator {
             }
             return preferences;
         } catch (SQLException e) {
-            logger.error(e);
+            logger.error(e.getMessage());
             e.printStackTrace();
         }
 
@@ -889,7 +889,7 @@ public class TimeBasedEvaluator {
             logger.error("Error for user: " + userId + " on item: " + itemId + ": " + e.toString());
         } catch (Exception e) {
             e.printStackTrace();
-            logger.error(e.getStackTrace());
+            logger.error(e.getMessage());
         }
         //logger.info("Reached end of evaluateRecommenderForuser; returning NaN");
 

@@ -9,10 +9,9 @@ import edu.bc.casinepe.jdbc.JDBCDataModel;
 import edu.bc.casinepe.jdbc.MovieDAO;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
+import org.apache.mahout.cf.taste.impl.model.file.FileDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.AbstractJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.model.jdbc.MySQLJDBCDataModel;
 import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood;
@@ -29,12 +28,14 @@ import org.apache.mahout.cf.taste.recommender.ItemBasedRecommender;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
-import org.apache.mahout.cf.taste.similarity.UserSimilarity;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
+import java.io.File;
+import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 
@@ -45,7 +46,8 @@ import static com.codahale.metrics.MetricRegistry.name;
  */
 @Path("movies")
 public class MoviesResource {
-    private static Logger logger = LogManager.getLogger(MoviesResource.class);
+
+    private static Logger logger = LoggerFactory.getLogger(MoviesResource.class);
     private final Timer fileResponses = MetricSystem.metrics.timer(name(MoviesResource.class, "fileResponses"));
     private final Timer getMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getMoviesFromDb"));
     private final Timer getSimilarMoviesFromDb = MetricSystem.metrics.timer(name(MoviesResource.class, "getSimilarMoviesFromDb"));
@@ -54,13 +56,16 @@ public class MoviesResource {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getMovies() {
-        final Timer.Context context = fileResponses.time();
         logger.info("Get movies from file");
+        final Timer.Context context = fileResponses.time();
         try {
             MoviesBean movies = new MoviesBean();
-            Map<Integer, List<Double>> movieRatings = FileRatings.parseMovieRatings("mahoutRatings.dat");
+            //Map<Integer, List<Double>> movieRatings = FileRatings.parseMovieRatings("mahoutRatings.dat");
+            File ratingsFile = new File(this.getClass().getResource("1mm-ratings.csv").getFile());
+            logger.info("File is: " + ratingsFile);
+            FileDataModel dataModel = new FileDataModel(ratingsFile);
 
-            Map<Integer, List<Double>> top5Movies =  VectorOperations.topNFromMap(5, movieRatings);
+            /*Map<Integer, List<Double>> top5Movies =  VectorOperations.topNFromMap(5, movieRatings);
             for (Map.Entry<Integer, List<Double>> entry : top5Movies.entrySet()) {
                 MovieBean m = new MovieBean();
                 List<Double> ratings = entry.getValue();
@@ -68,9 +73,27 @@ public class MoviesResource {
                 m.setRating(VectorOperations.mean(ratings));
                 m.setRatingsCount(ratings.size());
                 movies.addMovieBean(m);
+            }*/
+            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(dataModel);
+            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(9, 5);
+            MovieDAO movieDAO = new MovieDAO();
+            for (RecommendedItem item : recommendedItems) {
+                MovieBean m = movieDAO.getMovie((int)item.getItemID());
+                movies.addMovieBean(m);
             }
+            logger.info(movies.getMovies().size() + " movies have been recommended");
 
             return movies;
+
+        } catch (IOException e) {
+            logger.error(e.getMessage());
+            e.printStackTrace();
+            //Should be an error message JSON response
+            return new MoviesBean();
+        } catch (TasteException e) {
+            logger.error(e.getMessage());
+            e.printStackTrace();
+            return new MoviesBean();
         } finally {
             context.stop();
         }
@@ -92,7 +115,7 @@ public class MoviesResource {
 
             conn = MysqlDataSource.getDataSource().getConnection();
             stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) - 2 / (|/COUNT(movie_id)) AS average_rating " +
+            ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) AS average_rating " +
                     "FROM movie_ratings, movies " +
                     "WHERE movies.id = movie_ratings.movie_id " +
                     "GROUP BY movies.id " +
@@ -264,7 +287,7 @@ public class MoviesResource {
 
         } catch (TasteException e) {
 
-            logger.error(e);
+            logger.error(e.getMessage());
 
         } finally {
 

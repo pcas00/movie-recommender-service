@@ -17,24 +17,23 @@ import org.apache.mahout.cf.taste.impl.common.LongPrimitiveIterator;
 import org.apache.mahout.cf.taste.impl.common.RefreshHelper;
 import org.apache.mahout.cf.taste.impl.common.RunningAverage;
 import org.apache.mahout.cf.taste.impl.recommender.AbstractRecommender;
-import org.apache.mahout.cf.taste.impl.recommender.ItemUserAverageRecommender;
 import org.apache.mahout.cf.taste.impl.recommender.TopItems;
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
 
 
 import com.google.common.base.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Created by petercasinelli on 4/1/14.
  */
 public class ConfidenceItemUserAverageRecommender extends AbstractRecommender {
 
-    private static Logger logger = LogManager.getLogger(ConfidenceItemUserAverageRecommender.class);
+    private static Logger logger = LoggerFactory.getLogger(ConfidenceItemUserAverageRecommender.class);
     private final FastByIDMap<RunningAverage> itemAverages;
     private final FastByIDMap<RunningAverage> userAverages;
     private final RunningAverage overallAveragePrefValue;

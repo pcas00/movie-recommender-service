@@ -3,10 +3,9 @@ package edu.bc.casinepe.jdbc;
 import org.apache.commons.dbcp.*;
 import org.apache.commons.pool.ObjectPool;
 import org.apache.commons.pool.impl.GenericObjectPool;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.impl.model.jdbc.ConnectionPoolDataSource;
-import org.postgresql.ds.PGPoolingDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 import javax.sql.DataSource;
@@ -15,7 +14,7 @@ import javax.sql.DataSource;
  Some code is from http://svn.apache.org/repos/asf/commons/proper/dbcp/branches/TEST_DBCP_1_3_BRANCH/doc/ManualPoolingDataSourceExample.java
  */
 public class MysqlDataSource {
-    private static Logger logger = LogManager.getLogger(MysqlDataSource.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(MysqlDataSource.class.getName());
     public static DataSource dataSource = null;
 
     private MysqlDataSource() {}

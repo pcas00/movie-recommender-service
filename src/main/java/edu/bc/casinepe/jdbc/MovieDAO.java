@@ -4,8 +4,8 @@ import com.codahale.metrics.Timer;
 import edu.bc.casinepe.api.Rating;
 import edu.bc.casinepe.metrics.MetricSystem;
 import edu.bc.casinepe.api.MovieBean;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 
@@ -15,7 +15,7 @@ import static com.codahale.metrics.MetricRegistry.name;
  * Created by petercasinelli on 2/27/14.
  */
 public class MovieDAO {
-    private static Logger logger = LogManager.getLogger(MovieDAO.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(MovieDAO.class.getName());
     private final Timer getMovie = MetricSystem.metrics.timer(name(MovieDAO.class, "getMovie"));
 
     public MovieBean getMovie(int movieId) {
@@ -45,7 +45,7 @@ public class MovieDAO {
 
 
         } catch (Exception e) {
-            logger.error(e);
+            logger.error(e.getMessage());
 
         } finally {
 

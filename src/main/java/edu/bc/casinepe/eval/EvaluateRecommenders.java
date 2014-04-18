@@ -5,8 +5,6 @@ import edu.bc.casinepe.core.ConfidenceItemAverageRecommender;
 import edu.bc.casinepe.core.ConfidenceItemUserAverageRecommender;
 import edu.bc.casinepe.jdbc.MysqlDataSource;
 import edu.bc.casinepe.metrics.MetricSystem;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.common.Weighting;
 import org.apache.mahout.cf.taste.eval.IRStatistics;
@@ -28,12 +26,14 @@ import org.apache.mahout.cf.taste.recommender.IDRescorer;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.mahout.cf.taste.similarity.ItemSimilarity;
 import org.apache.mahout.cf.taste.similarity.UserSimilarity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 import static com.codahale.metrics.MetricRegistry.name;
 
 public class EvaluateRecommenders {
-    private static Logger logger = LogManager.getLogger(EvaluateRecommenders.class.getName());
+    private static Logger logger = LoggerFactory.getLogger(EvaluateRecommenders.class.getName());
     private final Timer modifiedItemAverageTimer = MetricSystem.metrics.timer(name(TimeBasedEvaluator.class, "modifiedItemAverage"));
 
     private double trainingPercentage;
@@ -228,12 +228,12 @@ public class EvaluateRecommenders {
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
         timeBasedEvaluator.introduceNewRatings(dataModel,
-                                               getItemCfRsBuilder(similarityStrategy),
-                                               similarityStrategy + "-item-item",
-                                               increments,
-                                               maxPreferences,
-                                               trainingPercentage,
-                                               evaluationPercentage);
+                getItemCfRsBuilder(similarityStrategy),
+                similarityStrategy + "-item-item",
+                increments,
+                maxPreferences,
+                trainingPercentage,
+                evaluationPercentage);
 
     }
 
@@ -245,12 +245,12 @@ public class EvaluateRecommenders {
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
         timeBasedEvaluator.introduceNewRatings(dataModel,
-                                               getItemCfRsBuilder(similarityStrategy),
-                                               similarityStrategy + "-item-item",
-                                               increments,
-                                               maxPreferences,
-                                               trainingPercentage,
-                                               evaluationPercentage);
+                getItemCfRsBuilder(similarityStrategy),
+                similarityStrategy + "-item-item",
+                increments,
+                maxPreferences,
+                trainingPercentage,
+                evaluationPercentage);
 
     }
 
