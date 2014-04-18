@@ -86,12 +86,12 @@ public class MoviesResource {
             return movies;
 
         } catch (IOException e) {
-            logger.error(e.getMessage());
+            logger.error("Error: " + e.getMessage());
             e.printStackTrace();
             //Should be an error message JSON response
             return new MoviesBean();
         } catch (TasteException e) {
-            logger.error(e.getMessage());
+            logger.error("Error: " + e.getMessage());
             e.printStackTrace();
             return new MoviesBean();
         } finally {
@@ -113,32 +113,19 @@ public class MoviesResource {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
-            conn = MysqlDataSource.getDataSource().getConnection();
-            stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT movies.id, movies.title, AVG(rating) AS average_rating " +
-                    "FROM movie_ratings, movies " +
-                    "WHERE movies.id = movie_ratings.movie_id " +
-                    "GROUP BY movies.id " +
-                    "ORDER BY average_rating DESC " +
-                    "LIMIT 5");
-
-            while (rs.next()) {
-                String title = rs.getString("title");
-                double averageRating = rs.getDouble("average_rating");
-                int movieId = rs.getInt("id");
-                MovieBean m = new MovieBean(movieId, title, averageRating);
+            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(JDBCDataModel.getDataModel());
+            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(9, 5);
+            MovieDAO movieDAO = new MovieDAO();
+            for (RecommendedItem item : recommendedItems) {
+                MovieBean m = movieDAO.getMovie((int)item.getItemID());
                 movies.addMovieBean(m);
-
             }
-
-            rs.close();
-            stmt.close();
-            conn.close();
+            logger.info(movies.getMovies().size() + " movies have been recommended");
 
             return movies;
 
-        } catch (SQLException e) {
-            logger.error("SQL statement failed: " + e);
+        } catch (TasteException e) {
+            logger.error("TasteException: {}", e);
         } finally {
             context.stop();
         }

@@ -1,25 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="INFO" name="RecommenderWebService" packages="edu.bc.casinepe">
+<Configuration status="info" name="RecommenderWebService" packages="edu.bc.casinepe">
     <Appenders>
         <File name="Default" fileName="logs/app.log">
+        <!--<File name="Default" fileName="/ec2-user/logs/app.log">-->
             <PatternLayout>
                 <Pattern>%d %p %c{1.} [%t] %m%n</Pattern>
             </PatternLayout>
         </File>
         <File name="Metrics" fileName="logs/metrics.log">
+        <!--<File name="Metrics" fileName="/ec2-user/logs/metrics.log">-->
+        <PatternLayout>
+                <Pattern>%d %p %c{1.} [%t] %m%n</Pattern>
+            </PatternLayout>
+        </File>
+        <File name="Resources" fileName="logs/resources.log">
+            <!--<File name="Errors" fileName="/ec2-user/logs/errors.log">-->
             <PatternLayout>
                 <Pattern>%d %p %c{1.} [%t] %m%n</Pattern>
             </PatternLayout>
         </File>
     </Appenders>
     <Loggers>
-        <Root level="ALL" additivity="false">
+        <Root level="info" additivity="false">
             <AppenderRef ref="Default"/>
         </Root>
-        <Logger name="edu.bc.casinepe" level="ERROR" additivity="false">
-            <AppenderRef ref="Errors"/>
+        <Logger name="edu.bc.casinepe.resources" level="all" additivity="false">
+            <AppenderRef ref="Resources"/>
         </Logger>
-        <Logger name="edu.bc.casinepe.metrics.MetricSystem" level="ALL" additivity="false">
+        <Logger name="edu.bc.casinepe.metrics" level="info" additivity="false">
             <AppenderRef ref="Metrics"/>
         </Logger>
     </Loggers>

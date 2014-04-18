@@ -11,26 +11,27 @@ import org.slf4j.LoggerFactory;
  * Created by petercasinelli on 4/11/14.
  */
 public class JDBCDataModel {
-    private static Logger logger = LoggerFactory.getLogger(JDBCDataModel.class.getName());
-    private static DataModel dataModel;
-
-    static {
-        try {
-            dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
-                    "movie_ratings",
-                    "user_id",
-                    "movie_id",
-                    "rating",
-                    "timestamp"));
-        } catch (TasteException e) {
-            logger.error(e.getMessage());
-            e.printStackTrace();
-        }
-    }
+    private static Logger logger = LoggerFactory.getLogger(JDBCDataModel.class);
+    private static DataModel dataModel = null;
 
     private JDBCDataModel() {}
 
     public static DataModel getDataModel() {
+        if (dataModel == null) {
+            try {
+                logger.info("Reloading data model to JDBC");
+                dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
+                        "movie_ratings",
+                        "user_id",
+                        "movie_id",
+                        "rating",
+                        "timestamp"));
+            } catch (TasteException e) {
+                logger.error("TasteException: {}", e);
+                e.printStackTrace();
+            }
+        }
+
         return dataModel;
     }
 }
