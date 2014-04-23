@@ -164,7 +164,7 @@
                         <argument>-Xms1024m</argument>
                         <argument>-Xmx2048m</argument>
                     </arguments>
-                    <mainClass>edu.bc.casinepe.EvaluateRecommenders</mainClass>
+                    <mainClass>edu.bc.casinepe.Main</mainClass>
                 </configuration>
             </plugin>
             <!--<plugin>

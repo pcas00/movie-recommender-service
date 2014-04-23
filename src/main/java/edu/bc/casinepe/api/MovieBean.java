@@ -5,20 +5,20 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class MovieBean {
 
     @JsonProperty("movieId")
-    private int id;
+    private long id;
     private String title;
     private double rating;
     private int ratingsCount;
 
     public MovieBean() {}
 
-    public MovieBean(int id, String title, double rating) {
+    public MovieBean(long id, String title, double rating) {
         this.id = id;
         this.title = title;
         this.rating = rating;
     }
 
-    public void setId(int id) {
+    public void setId(long id) {
         this.id = id;
     }
 
@@ -34,7 +34,7 @@ public class MovieBean {
         this.ratingsCount = ratingsCount;
     }
 
-    public int getId() {
+    public long getId() {
         return this.id;
     }
 

@@ -1,7 +1,7 @@
 package edu.bc.casinepe.resources;
 
 import edu.bc.casinepe.api.MovieBean;
-import edu.bc.casinepe.api.Rating;
+import edu.bc.casinepe.api.RatingBean;
 import edu.bc.casinepe.jdbc.MovieDAO;
 
 import org.slf4j.Logger;
@@ -33,10 +33,8 @@ public class MovieResource {
      * Adds a new movie with post data
      */
     @POST
-    @Path("/")
     @Produces(MediaType.APPLICATION_JSON)
     public MovieBean postMovie(MovieBean movie) {
-
         return movieDAO.addMovie(movie);
     }
 
@@ -54,8 +52,8 @@ public class MovieResource {
     @PUT
     @Path("/{movieId}/rating")
     @Produces(MediaType.APPLICATION_JSON)
-    public MovieBean putMovieRating(Rating rating) {
-        return movieDAO.putRating(rating);
+    public MovieBean putMovieRating(RatingBean ratingBean) {
+        return movieDAO.putRating(ratingBean);
     }
 
 

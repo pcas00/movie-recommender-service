@@ -101,20 +101,18 @@ public class MoviesResource {
     }
 
     @GET
-    @Path("/db")
+    @Path("/db/{userId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public MoviesBean getMoviesFromDB() {
+    public MoviesBean getMoviesFromDB(@PathParam("userId") long userId) {
 
         final Timer.Context context = getMoviesFromDb.time();
-        Connection conn = null;
-        Statement stmt = null;
 
         try {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
             ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(JDBCDataModel.getDataModel());
-            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(9, 5);
+            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(userId, 5);
             MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendedItems) {
                 MovieBean m = movieDAO.getMovie((int)item.getItemID());

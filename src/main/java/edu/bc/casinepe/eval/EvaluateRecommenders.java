@@ -30,11 +30,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+import javax.sql.DataSource;
+
 import static com.codahale.metrics.MetricRegistry.name;
 
 public class EvaluateRecommenders {
     private static Logger logger = LoggerFactory.getLogger(EvaluateRecommenders.class.getName());
-    private final Timer modifiedItemAverageTimer = MetricSystem.metrics.timer(name(TimeBasedEvaluator.class, "modifiedItemAverage"));
+    private final Timer modifiedItemAverageTimer = MetricSystem.metrics.timer(name(PreferenceIntroductionEvaluator.class, "modifiedItemAverage"));
 
     private double trainingPercentage;
     private double evaluationPercentage;
@@ -64,6 +66,7 @@ public class EvaluateRecommenders {
 
 
         try {
+
             //Reload from model does not include preferences when exporting from AbstractJDBCDataModel
             DataModel dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
                                                                                     "movie_ratings",
@@ -83,11 +86,11 @@ public class EvaluateRecommenders {
             LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);*/
 
             //Start evaluation
-            /*evaluateItemItemCF("pearson", dataModel);
+            evaluateItemItemCF("pearson", dataModel);
             evaluateItemItemCF("loglikelihood", dataModel);
 
-            evaluateUserUserCF("pearson", dataModel);*/
-            //evaluateUserUserCF("loglikelihood", dataModel);
+            /*evaluateUserUserCF("pearson", dataModel);
+            evaluateUserUserCF("loglikelihood", dataModel);*/
 
             // Non-Personalized Recommenders
 
@@ -99,7 +102,7 @@ public class EvaluateRecommenders {
 
 
             //evaluateUserCFNonTargetDatasetIncrements(dataModel, "pearson");
-            evaluateUserCFNonTargetDatasetIncrements(dataModel, "loglikelihood");
+            //evaluateUserCFNonTargetDatasetIncrements(dataModel, "loglikelihood");
 
             /*evaluateItemCFNonTargetDatasetIncrements(dataModel, "pearson");
             evaluateItemCFNonTargetDatasetIncrements(dataModel, "loglikelihood");*/
@@ -107,16 +110,31 @@ public class EvaluateRecommenders {
 
            //TODO
            /*evaluateUserCFIntroduceNewPreferences(dataModel, "pearson");
-           evaluateUserCFIntroduceNewPreferences(dataModel, "loglikelihood");*/
+           evaluateUserCFIntroduceNewPreferences(dataModel, "loglikelihood"); */
 
            /*evaluateItemCFIntroduceNewPreferences(dataModel, "pearson");
            evaluateItemCFIntroduceNewPreferences(dataModel, "loglikelihood");*/
 
+           /*neighborhoodExperiment("pearson", dataModel, increments, maxPreferences);
+           neighborhoodExperiment("loglikelihood", dataModel, increments, maxPreferences);*/
 
         } catch (TasteException e) {
             e.printStackTrace();
         }
 
+    }
+
+
+    public void neighborhoodExperiment(String similarityStrategy, DataModel dataModel, int incrementPreferencesBy, int maxPreferencesToUse) {
+
+        PreferenceIntroductionEvaluator preferenceIntroductionEvaluator = new PreferenceIntroductionEvaluator();
+
+        preferenceIntroductionEvaluator.averageRatingsByNeighbors(25,
+                                                                  similarityStrategy,
+                                                                  dataModel,
+                                                                  incrementPreferencesBy,
+                                                                  maxPreferencesToUse,
+                                                                  trainingPercentage);
     }
 
     public RecommenderBuilder getUserCfRsBuilder(final int neighborhoodSize, final String similarityStrategy) {
@@ -162,7 +180,7 @@ public class EvaluateRecommenders {
                 try {
 
                     if (similarityStrategy.equals("pearson")) {
-                        is = new PearsonCorrelationSimilarity(model);
+                        is = new PearsonCorrelationSimilarity(model, Weighting.WEIGHTED);
                     } else if (similarityStrategy.equals("loglikelihood")) {
                         is = new LogLikelihoodSimilarity(model);
                     } else {
@@ -188,7 +206,7 @@ public class EvaluateRecommenders {
     public void evaluateUserCFNonTargetDatasetIncrements(DataModel dataModel, String similarityStrategy) {
         logger.info("Evaluating User-User CF Introducing Non-Target Data in Increments with " + similarityStrategy.toString());
 
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        PreferenceIntroductionEvaluator timeBasedEvaluator = new PreferenceIntroductionEvaluator();
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
@@ -205,7 +223,7 @@ public class EvaluateRecommenders {
     public void evaluateItemCFNonTargetDatasetIncrements(DataModel dataModel, String similarityStrategy) {
         logger.info("Evaluating Item-Item CF Introducing Non-Target Data in Increments with " + similarityStrategy);
 
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        PreferenceIntroductionEvaluator timeBasedEvaluator = new PreferenceIntroductionEvaluator();
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
@@ -223,13 +241,13 @@ public class EvaluateRecommenders {
 
         logger.info("Evaluating User-User CF introducing new preferences using " + similarityStrategy);
 
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        PreferenceIntroductionEvaluator timeBasedEvaluator = new PreferenceIntroductionEvaluator();
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
         timeBasedEvaluator.introduceNewRatings(dataModel,
-                getItemCfRsBuilder(similarityStrategy),
-                similarityStrategy + "-item-item",
+                getUserCfRsBuilder(25, similarityStrategy),
+                similarityStrategy + "-user-user",
                 increments,
                 maxPreferences,
                 trainingPercentage,
@@ -240,7 +258,7 @@ public class EvaluateRecommenders {
     public void evaluateItemCFIntroduceNewPreferences(DataModel dataModel, String similarityStrategy) {
         logger.info("Evaluating Item-Item CF introducing new preferences using " + similarityStrategy);
 
-        TimeBasedEvaluator timeBasedEvaluator = new TimeBasedEvaluator();
+        PreferenceIntroductionEvaluator timeBasedEvaluator = new PreferenceIntroductionEvaluator();
         //Ensures random testing results every test
         org.apache.mahout.common.RandomUtils.useTestSeed();
 
