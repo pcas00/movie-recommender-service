@@ -358,10 +358,11 @@ public class PreferenceIntroductionEvaluator {
                 }
 
                 logger.info("User " + userId + " AAD Average: " + userAadAverage.getAverage() + " RMSE Average: " + userRmseAverage.getAverage());
-                printList(similarityStrategy + "-non-target-aad", averageAadsByIncrementsList);
-                printList(similarityStrategy + "-non-target-rmse", averageRmseByIncrementsList);
 
             }
+
+            printList(similarityStrategy + "-non-target-aad2", averageAadsByIncrementsList);
+            printList(similarityStrategy + "-non-target-rmse2", averageRmseByIncrementsList);
 
             logger.info("Total AAD Average: " + totalAadAverage.getAverage() + " Total RMSE Average: " + totalRmseAverage.getAverage());
 

@@ -86,8 +86,8 @@ public class EvaluateRecommenders {
             LogLikelihoodSimilarity logLikelihoodSimilarity = new LogLikelihoodSimilarity(dataModel);*/
 
             //Start evaluation
-            evaluateItemItemCF("pearson", dataModel);
-            evaluateItemItemCF("loglikelihood", dataModel);
+            /*evaluateItemItemCF("pearson", dataModel);
+            evaluateItemItemCF("loglikelihood", dataModel);*/
 
             /*evaluateUserUserCF("pearson", dataModel);
             evaluateUserUserCF("loglikelihood", dataModel);*/
@@ -104,8 +104,8 @@ public class EvaluateRecommenders {
             //evaluateUserCFNonTargetDatasetIncrements(dataModel, "pearson");
             //evaluateUserCFNonTargetDatasetIncrements(dataModel, "loglikelihood");
 
-            /*evaluateItemCFNonTargetDatasetIncrements(dataModel, "pearson");
-            evaluateItemCFNonTargetDatasetIncrements(dataModel, "loglikelihood");*/
+            //evaluateItemCFNonTargetDatasetIncrements(dataModel, "pearson");
+           // evaluateItemCFNonTargetDatasetIncrements(dataModel, "loglikelihood");
 
 
            //TODO

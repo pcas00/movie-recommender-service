@@ -29,7 +29,6 @@ public class Main {
         final ResourceConfig rc = new ResourceConfig().packages("edu.bc.casinepe.resources")
                                                       .register(JacksonFeature.class)
                                                       .register(CorsResponseFilter.class);
-
         MetricSystem.start();
 
         // create and start a new instance of grizzly http server
