@@ -3,9 +3,8 @@ package edu.bc.casinepe.core;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
+import java.net.URL;
 import java.util.*;
 
 /**
@@ -13,7 +12,31 @@ import java.util.*;
  */
 public class FileRatings {
     private static Logger logger = LogManager.getLogger(FileRatings.class.getName());
+    public static File ratingsFile = null;
 
+    public static File getRatingsFile() {
+        if (ratingsFile == null) {
+            logger.info("Ratings file is null; creating new file");
+            try {
+                InputStream input = FileRatings.class.getResourceAsStream("/1mm-ratings.csv");
+                ratingsFile = new File("1mm-ratings.csv");
+                OutputStream out = new FileOutputStream(ratingsFile);
+                int read;
+                byte[] bytes = new byte[1024];
+
+                while ((read = input.read(bytes)) != -1) {
+                    out.write(bytes, 0, read);
+                }
+
+            } catch (IOException e) {
+                logger.error("IOException: ", e);
+            } catch (Exception e) {
+                logger.error("Exception: ", e);
+            }
+        }
+        logger.info("Returning ratings file");
+        return ratingsFile;
+    }
     /*
     * @param fileName relative file name string which must be located in resources/ directory
     * @return map of movie id's and respective ratings

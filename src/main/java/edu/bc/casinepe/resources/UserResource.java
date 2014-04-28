@@ -1,7 +1,7 @@
 package edu.bc.casinepe.resources;
 
 import edu.bc.casinepe.api.MoviesBean;
-import edu.bc.casinepe.jdbc.UserDAO;
+import edu.bc.casinepe.dao.UserDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -2,7 +2,7 @@ package edu.bc.casinepe.resources;
 
 import edu.bc.casinepe.api.MovieBean;
 import edu.bc.casinepe.api.RatingBean;
-import edu.bc.casinepe.jdbc.MovieDAO;
+import edu.bc.casinepe.dao.MovieDAO;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

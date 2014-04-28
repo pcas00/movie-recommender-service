@@ -108,7 +108,6 @@ public class PreferenceIntroductionEvaluator {
                 //logger.info("Max preferences to use for this user: " + trainingPercentage + " User Preferences Size: " + userPreferences.size());
                 logger.info("Will introduce " + maxPreferencesForUser + " preferences from user " + newUserId);
 
-                //TODO should this be done only within the next loop? are duplicate ratings be added?
                 List<Preference> newPreferencesToIntroduce = new ArrayList(maxPreferencesForUser + 1);
 
                 for (int i = incrementPreferencesBy; i <= maxPreferencesForUser; i += incrementPreferencesBy) {

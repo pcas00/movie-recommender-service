@@ -27,5 +27,8 @@
         <Logger name="edu.bc.casinepe.metrics" level="info" additivity="false">
             <AppenderRef ref="Metrics"/>
         </Logger>
+        <Logger name="org.apache.mahout.cf.taste.impl.recommender" level="all" additivity="false">
+            <AppenderRef ref="Default" />
+        </Logger>
     </Loggers>
 </Configuration>

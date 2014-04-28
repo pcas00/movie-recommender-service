@@ -80,24 +80,24 @@
             <version>${metrics.version}</version>
         </dependency>
 
-        <!-- PostgreSQL JDBC Driver -->
-        <dependency>
-            <groupId>postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>9.1-901.jdbc4</version>
-        </dependency>
 
         <!-- JDBI -->
-        <dependency>
+        <!--<dependency>
             <groupId>org.jdbi</groupId>
             <artifactId>jdbi</artifactId>
             <version>2.53</version>
-        </dependency>
+        </dependency>-->
 
         <!-- Apache Mahout -->
         <dependency>
             <groupId>org.apache.mahout</groupId>
             <artifactId>mahout-core</artifactId>
+            <version>0.9</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.mahout</groupId>
+            <artifactId>mahout-integration</artifactId>
             <version>0.9</version>
         </dependency>
 
@@ -119,17 +119,24 @@
             <artifactId>mysql-connector-java</artifactId>
             <version>5.1.6</version>
         </dependency>
-<!--        <dependency>
-            <groupId>org.apache.mahout</groupId>
-            <artifactId>mahout-core</artifactId>
-            <version>0.5</version>
-        </dependency> -->
+
+       <!-- <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+            <version>2.2</version>
+        </dependency>
 
         <dependency>
-            <groupId>org.apache.mahout</groupId>
-            <artifactId>mahout-integration</artifactId>
-            <version>0.9</version>
-        </dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-dbcp2</artifactId>
+            <version>2.0</version>
+        </dependency>-->
+
+
+
+
+
+
 
     </dependencies>
 
