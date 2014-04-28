@@ -18,18 +18,18 @@ public class JDBCDataModel {
 
     public static DataModel getDataModel() {
         if (dataModel == null) {
-            //try {
+            try {
                 logger.info("Reloading data model to JDBC");
-                dataModel = /*new ReloadFromJDBCDataModel(*/new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
+                dataModel = new ReloadFromJDBCDataModel(new MySQLJDBCDataModel(MysqlDataSource.getDataSource(),
                         "movie_ratings",
                         "user_id",
                         "movie_id",
                         "rating",
-                        "timestamp")/*)*/;
-            /*} catch (TasteException e) {
+                        "timestamp"));
+            } catch (TasteException e) {
                 logger.error("TasteException: {}", e);
                 e.printStackTrace();
-            }*/
+            }
         }
 
         return dataModel;
