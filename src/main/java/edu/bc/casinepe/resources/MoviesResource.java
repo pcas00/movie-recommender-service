@@ -18,6 +18,7 @@ import org.apache.mahout.cf.taste.impl.neighborhood.CachingUserNeighborhood;
 import org.apache.mahout.cf.taste.impl.neighborhood.NearestNUserNeighborhood;
 import org.apache.mahout.cf.taste.impl.recommender.*;
 import org.apache.mahout.cf.taste.impl.similarity.LogLikelihoodSimilarity;
+import org.apache.mahout.cf.taste.impl.similarity.PearsonCorrelationSimilarity;
 import org.apache.mahout.cf.taste.model.DataModel;
 import org.apache.mahout.cf.taste.neighborhood.UserNeighborhood;
 import org.apache.mahout.cf.taste.recommender.*;
@@ -58,16 +59,16 @@ public class MoviesResource {
         logger.info("Before try");
 
         try {
-            final FileDataModel dataModel = new FileDataModel(FileRatings.getRatingsFile());
+            /*final FileDataModel dataModel = new FileDataModel(FileRatings.getRatingsFile());
 
-            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(dataModel);
+            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(dataModel);*/
 
             IDRescorer customIdRescorer = new IDRescorer() {
                 @Override
                 public double rescore(long id, double originalScore) {
                     double newScore = originalScore;
                     try {
-                        int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
+                        int numberOfRatings = JDBCDataModel.getDataModel().getNumUsersWithPreferenceFor(id);
                         newScore = originalScore - 20 / Math.sqrt(numberOfRatings);
                     } catch (TasteException e) {
                         e.printStackTrace();
@@ -82,18 +83,24 @@ public class MoviesResource {
                 }
             };
 
-            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(9, 5, customIdRescorer);
+
+            Recommender recommender = RecommenderFactory.getItemAverageRecommender();
+            List<RecommendedItem> recommendedItems = recommender.recommend(9, 5, customIdRescorer);
+
             MovieDAO movieDAO = new MovieDAO();
+
             for (RecommendedItem item : recommendedItems) {
-                MovieBean m = movieDAO.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovieData((int)item.getItemID());
+                m.setRating(item.getValue());
                 movies.addMovieBean(m);
             }
+
             logger.info(movies.getMovies().size() + " movies have been recommended");
 
-        } catch (IOException e) {
+        }/* catch (IOException e) {
             logger.error("IOException Error: {}", e);
             e.printStackTrace();
-        } catch (TasteException e) {
+        }*/ catch (TasteException e) {
             logger.error("TasteException Error: {}", e);
             e.printStackTrace();
         } catch (Exception e) {
@@ -117,8 +124,30 @@ public class MoviesResource {
             // Create container for movies
             MoviesBean movies = new MoviesBean();
 
-            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(JDBCDataModel.getDataModel());
-            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(userId, 5);
+            final DataModel dataModel = JDBCDataModel.getDataModel();
+            ItemAverageRecommender itemAverageRecommender = new ItemAverageRecommender(dataModel);
+
+            IDRescorer customIdRescorer = new IDRescorer() {
+                @Override
+                public double rescore(long id, double originalScore) {
+                    double newScore = originalScore;
+                    try {
+                        int numberOfRatings = dataModel.getNumUsersWithPreferenceFor(id);
+                        newScore = originalScore - 20 / Math.sqrt(numberOfRatings);
+                    } catch (TasteException e) {
+                        e.printStackTrace();
+                    } finally {
+                        return newScore;
+                    }
+                }
+
+                @Override
+                public boolean isFiltered(long id) {
+                    return false;
+                }
+            };
+
+            List<RecommendedItem> recommendedItems = itemAverageRecommender.recommend(userId, 5, customIdRescorer);
             MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendedItems) {
                 MovieBean m = movieDAO.getMovie((int)item.getItemID());
@@ -308,12 +337,14 @@ public class MoviesResource {
 
 
     @GET
-    @Path("/uu/{dataModel}/similarity/{similarityStrategy}")
+    @Path("/uu/{dataModel}/similarity/{similarityStrategy}/user/{userId}")
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getUserUserCFRecommendations(@PathParam("dataModel") String dataModelStrategy,
-                                                   @PathParam("similarityStrategy") String similarityStrategy) {
+                                                   @PathParam("similarityStrategy") String similarityStrategy,
+                                                   @PathParam("userId") long userId) {
 
-        long userId = (long) (random.nextInt(6039) + 1);
+        //long userId = (long) (random.nextInt(6039) + 1);
+        //long userId = 2;
 
         logger.info("UU CF with " + dataModelStrategy + " data model, " + similarityStrategy + " similarity algorithm, for user " + userId);
         MoviesBean recommendedMovies = new MoviesBean();
@@ -322,20 +353,31 @@ public class MoviesResource {
 
         try {
 
-            //Establish dataModel; can either be file or sql based
-            //final DataModel dataModel = getDataModel(dataModelStrategy);
+            Recommender recommender = null;
 
-           /* UserSimilarity userSimilarity = getUserSimilarity(similarityStrategy);
+            if (dataModelStrategy.equals("file")) {
+                logger.info("File so do not use factory");
+                final DataModel dataModel = getDataModel(dataModelStrategy);
+                UserSimilarity userSimilarity = null;
 
-            UserNeighborhood neighborhood = new CachingUserNeighborhood(new NearestNUserNeighborhood(25, userSimilarity, dataModel), dataModel);
-            Recommender recommender = new CachingRecommender(new GenericUserBasedRecommender(dataModel, neighborhood, userSimilarity));*/
+                if (similarityStrategy.equals("pearson")) {
+                    userSimilarity = new PearsonCorrelationSimilarity(dataModel);
+                } else {
+                    userSimilarity = new LogLikelihoodSimilarity(dataModel);
+                }
+                UserNeighborhood userNeighborhood = new NearestNUserNeighborhood(25, userSimilarity, dataModel);
+                recommender = new GenericUserBasedRecommender(dataModel, userNeighborhood, userSimilarity);
+            } else {
+                logger.info("DB so using factory");
+                recommender = RecommenderFactory.getRecommenderSystem("uu", similarityStrategy);
+            }
 
-            Recommender recommender = RecommenderFactory.getRecommenderSystem("uu", similarityStrategy);
 
             List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
             MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendations) {
-                MovieBean m = movieDAO.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovieData((int)item.getItemID());
+                m.setRating(item.getValue());
                 recommendedMovies.addMovieBean(m);
             }
 
@@ -350,12 +392,15 @@ public class MoviesResource {
     }
 
     @GET
-    @Path("/ii/{dataModel}/similarity/{similarityStrategy}")
+    @Path("/ii/{dataModel}/similarity/{similarityStrategy}/user/{userId}")
     @Produces(MediaType.APPLICATION_JSON)
     public MoviesBean getItemItemCFRecommendations(@PathParam("dataModel") String dataModelStrategy,
-                                                   @PathParam("similarityStrategy") String similarityStrategy) {
+                                                   @PathParam("similarityStrategy") String similarityStrategy,
+                                                   @PathParam("userId") long userId) {
 
-        long userId = (long) (random.nextInt(6039) + 1);
+        //long userId = (long) (random.nextInt(6039) + 1);
+        //long userId = 2;
+
 
         logger.info("II CF with " + dataModelStrategy + " data model, " + similarityStrategy + " similarity algorithm, for user " + userId);
         MoviesBean recommendedMovies = new MoviesBean();
@@ -363,22 +408,31 @@ public class MoviesResource {
         final Timer.Context context = TimerFactory.getTimer(TimerFactory.getTimerType("ii", dataModelStrategy, similarityStrategy)).time();
         try {
 
-            //Establish dataModel; can either be file or sql based
-            //final DataModel dataModel = getDataModel(dataModelStrategy);
 
-            //ItemSimilarity itemSimilarity = getItemSimilarity(similarityStrategy);
+            Recommender recommender = null;
 
-            /*CandidateItemsStrategy candidateStrategy = new SamplingCandidateItemsStrategy(dataModel.getNumUsers(), dataModel.getNumItems());
-            MostSimilarItemsCandidateItemsStrategy mostSimilarStrategy = new SamplingCandidateItemsStrategy(dataModel.getNumUsers(), dataModel.getNumItems());*/
+            if (dataModelStrategy.equals("file")) {
+                logger.info("File so do not use factory");
+                final DataModel dataModel = getDataModel(dataModelStrategy);
 
-            Recommender recommender = RecommenderFactory.getRecommenderSystem("ii", similarityStrategy);
+                ItemSimilarity itemSimilarity = null;
 
-            //Recommender recommender = new CachingRecommender(new GenericItemBasedRecommender(dataModel, itemSimilarity, candidateStrategy, mostSimilarStrategy));
-            //Recommender recommender = new CachingRecommender(new GenericItemBasedRecommender(dataModel, itemSimilarity));
+                if (similarityStrategy.equals("pearson")) {
+                    itemSimilarity = new PearsonCorrelationSimilarity(dataModel);
+                } else {
+                    itemSimilarity = new LogLikelihoodSimilarity(dataModel);
+                }
+                recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
+            } else {
+                logger.info("DB so using factory");
+                recommender = RecommenderFactory.getRecommenderSystem("ii", similarityStrategy);
+            }
+
             List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
             MovieDAO movieDAO = new MovieDAO();
             for (RecommendedItem item : recommendations) {
-                MovieBean m = movieDAO.getMovie((int)item.getItemID());
+                MovieBean m = movieDAO.getMovieData((int)item.getItemID());
+                m.setRating(item.getValue());
                 recommendedMovies.addMovieBean(m);
             }
 
@@ -392,35 +446,5 @@ public class MoviesResource {
         }
     }
 
-    @GET
-    @Path("/uuslow/{userId}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public MoviesBean getUserUserCFRecommendationsSlow(@PathParam("userId") int userId) {
-
-        MoviesBean recommendedMovies = new MoviesBean();
-
-        final DataModel dataModel = JDBCDataModel.getDataModel();
-
-        Recommender recommender = null;
-
-        try {
-            ItemSimilarity itemSimilarity = new LogLikelihoodSimilarity(dataModel);
-            recommender = new GenericItemBasedRecommender(dataModel, itemSimilarity);
-            List<RecommendedItem> recommendations = recommender.recommend(userId, 5);
-            MovieDAO movieDAO = new MovieDAO();
-            for (RecommendedItem item : recommendations) {
-                MovieBean m = movieDAO.getMovie((int)item.getItemID());
-                recommendedMovies.addMovieBean(m);
-            }
-
-        } catch (TasteException e) {
-
-            logger.error(e.getMessage());
-
-        } finally {
-
-            return recommendedMovies;
-        }
-    }
 
 }

@@ -105,8 +105,8 @@ public class MysqlDataSource {
             //
 
             ConnectionFactory connectionFactory = new DriverManagerConnectionFactory(
-                "jdbc:mysql://movie-recommender.cunjeovcml9v.us-east-1.rds.amazonaws.com:3306/movie_recommender", "pcasinelli", "alvarez2014"
-                /*    "jdbc:mysql://localhost/movie_recommender", "root", ""*/);
+                /*"jdbc:mysql://movie-recommender.cunjeovcml9v.us-east-1.rds.amazonaws.com:3306/movie_recommender", "pcasinelli", "alvarez2014"*/
+                    "jdbc:mysql://localhost/movie_recommender", "root", "");
 
 
             //

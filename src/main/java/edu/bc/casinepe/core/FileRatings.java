@@ -1,7 +1,9 @@
 package edu.bc.casinepe.core;
 
+import edu.bc.casinepe.jdbc.JDBCDataModel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.mahout.cf.taste.impl.similarity.precompute.MultithreadedBatchItemSimilarities;
 
 import java.io.*;
 import java.net.URL;

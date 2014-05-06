@@ -19,8 +19,8 @@ import java.net.URI;
  */
 public class Main {
     // Base URI the Grizzly HTTP server will listen on
-    public static final String BASE_URI = "http://0.0.0.0:8080/";
-    //public static final String BASE_URI = "http://localhost:8080/";
+    //public static final String BASE_URI = "http://0.0.0.0:8080/";
+    public static final String BASE_URI = "http://localhost:8080/";
 
 
 
@@ -41,11 +41,12 @@ public class Main {
         FileRatings.getRatingsFile();
         JDBCDataModel.getDataModel();
 
-        RecommenderFactory.getUserUserLogCFRS();
-        RecommenderFactory.getUserUserPearsonCFRS();
+        /*RecommenderFactory.getUserUserLogCFRS();
+        RecommenderFactory.getUserUserPearsonCFRS();*/
 
         RecommenderFactory.getItemItemLogCFRS();
         RecommenderFactory.getItemItemPearsonCFRS();
+        RecommenderFactory.getItemAverageRecommender();
 
 
         // create and start a new instance of grizzly http server
